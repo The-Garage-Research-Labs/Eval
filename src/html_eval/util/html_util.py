@@ -7,6 +7,48 @@ from typing import List, Dict, Optional, Union, Tuple
 from difflib import SequenceMatcher
 import unicodedata
 from rapidfuzz import fuzz
+from lxml import etree, html
+import polars as pl
+
+def merge_html_chunks(chunks: List[str]) -> str:
+        """
+        Merge a list of HTML chunk strings into a single HTML document.
+        If a chunk has no <body>, append its top-level nodes anyway.
+        Returns prettified HTML (we later strip newlines).
+        """
+        
+        # print("chunks to merge:")
+        # print(chunks)
+        # print(isinstance(chunks[0],list))
+        # print(type(chunks[0]))
+        if not isinstance(chunks[0],str):
+            merged_list = []
+            for chunk in chunks:
+                # print("CURRENT CHUNK",chunk)
+                if len(chunk) == 0:
+                    continue
+                for c in chunk:
+                    # print("CURRENT C",c)
+                    if len(c) == 0:
+                        continue
+                    if isinstance(c,pl.Series):
+                        merged_list.append((c[0], c[1]))
+                    else:
+                        merged_list.append((c['xpath'], c['content']))
+            # print("MERGINGGG")
+            # print(merged_list)
+            final_html = merge_xpaths_to_html(merged_list)
+            final_html = clean_html(final_html)
+        else:
+            final_html = ""
+
+            for i , ch in enumerate(chunks):
+                if ch.strip() == "":
+                    continue
+                final_html += f"\nchunk number {i}"
+                final_html += ch
+                
+        return final_html
 
 def normalize_html_text(text: str) -> str:
     """
@@ -83,42 +125,159 @@ def clean_html( html_content: str,
     Returns:
         str: The cleaned HTML or plain text, depending on `keep_tags`.
     """
-    soup = BeautifulSoup(html_content or "", "html.parser")
+    html_content = custom_clean_html(html_content)
+    # soup = BeautifulSoup(html_content or "", "html.parser")
 
-    remove_tags = set(DEFAULT_REMOVE_TAGS) | set(extra_remove_tags)
-    for tag_name in remove_tags:
-        for tag in soup.find_all(tag_name):
-            tag.decompose()
+    # remove_tags = set(DEFAULT_REMOVE_TAGS) | set(extra_remove_tags)
+    # for tag_name in remove_tags:
+    #     for tag in soup.find_all(tag_name):
+    #         tag.decompose()
 
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
+    # for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+    #     comment.extract()
 
-    if strip_attrs:
-        for tag in soup.find_all(True):
-            tag.attrs = {}
+    # if strip_attrs:
+    #     for tag in soup.find_all(True):
+    #         tag.attrs = {}
 
-    if strip_links:
-        for a in soup.find_all('a'):
-            a.replace_with(a.get_text())
+    # if strip_links:
+    #     for a in soup.find_all('a'):
+    #         a.replace_with(a.get_text())
 
-    for tag in soup.find_all(True):
-        if not tag.get_text(strip=True):
-            tag.decompose()
+    # for tag in soup.find_all(True):
+    #     if not tag.get_text(strip=True):
+    #         tag.decompose()
 
-    if keep_tags:
-        html_str = str(soup)
-        html_str = re.sub(r'(?m)^[ \t]*\n', '', html_str)
-        return html_str.strip()
+    # if keep_tags:
+    #     html_str = str(soup)
+    #     html_str = re.sub(r'(?m)^[ \t]*\n', '', html_str)
+    #     return html_str.strip()
 
-    text = soup.get_text(separator='\n', strip=True)
-    lines = [line for line in text.splitlines() if line.strip()]
-    clean_text = '\n'.join(lines)
-    clean_text = re.sub(r'\s+', ' ', clean_text)
+    # text = soup.get_text(separator='\n', strip=True)
+    # lines = [line for line in text.splitlines() if line.strip()]
+    # clean_text = '\n'.join(lines)
+    # clean_text = re.sub(r'\s+', ' ', clean_text)
     
+    clean_text = html_content
     if use_clean_rag:
         clean_text = clean_html_rag(clean_text)
 
     return clean_text.strip()
+
+def custom_clean_html(html_content: str) -> str:
+    """Clean HTML content by removing scripts/styles/comments and invisible elements.
+    
+    The function removes elements that are likely invisible (inline styles with 
+    display:none, visibility:hidden, opacity:0, hidden attribute, aria-hidden).
+    It also removes <script>, <style>, <noscript>, <template>, <iframe>, and 
+    other non-visible tags, plus all comments.
+    
+    Args:
+        html_content: raw HTML string
+    
+    Returns:
+        cleaned HTML string (serialized back to HTML)
+    """
+    parser = html.HTMLParser(remove_comments=False)
+    doc = html.fromstring(html_content, parser=parser)
+    
+    # Remove comment nodes
+    _remove_comments(doc)
+    
+    # Remove unwanted tags in one pass
+    unwanted_tags = [
+        "script", "style", "noscript", "template", "iframe", 
+        "object", "embed", "canvas", "svg", "link", "meta", "title", "head"
+    ]
+    _remove_nodes_by_tag(doc, unwanted_tags)
+    
+    # Regex to detect hidden inline styles
+    HIDDEN_REGEX = re.compile(
+        r'display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0',
+        re.IGNORECASE
+    )
+    
+    # Collect hidden elements
+    to_remove = []
+    for el in doc.iter():
+        # Skip non-element nodes (comments, processing instructions, etc.)
+        if not isinstance(el.tag, str):
+            continue
+        
+        # Check for 'hidden' attribute
+        if el.get('hidden') is not None:
+            to_remove.append(el)
+            continue
+        
+        # Check for aria-hidden="true"
+        if el.get('aria-hidden') == 'true':
+            to_remove.append(el)
+            continue
+        
+        # Check inline style for hiding
+        style = el.get('style', '')
+        if style and HIDDEN_REGEX.search(style):
+            to_remove.append(el)
+            continue
+        
+        # Check for common hidden classes
+        class_attr = el.get('class', '')
+        if class_attr and ('hidden' in class_attr.lower() or 'invisible' in class_attr.lower()):
+            to_remove.append(el)
+    
+    # Remove hidden elements
+    for el in to_remove:
+        parent = el.getparent()
+        if parent is not None:
+            try:
+                parent.remove(el)
+            except Exception:
+                pass
+    
+    # Remove CSS/JS event attributes from remaining elements
+    css_js_attrs = [
+        'style', 'onclick', 'onload', 'onmouseover', 'onmouseout', 
+        'onchange', 'onsubmit', 'onfocus', 'onblur', 'onkeydown', 
+        'onkeyup', 'onkeypress', 'onerror', 'onabort', 'onreset', 
+        'onselect', 'onunload', 'onresize', 'onmouseenter', 
+        'onmouseleave', 'onwheel', 'oninput', 'ondrag', 'ondrop', 
+        'oncontextmenu', 'oncopy', 'oncut', 'onpaste'
+    ]
+    
+    for el in doc.iter():
+        if not isinstance(el.tag, str):
+            continue
+        for attr in css_js_attrs:
+            if attr in el.attrib:
+                del el.attrib[attr]
+    
+    # Return normalized HTML string
+    return etree.tostring(doc, encoding="unicode", method="html")
+
+def _remove_comments(doc):
+    """Remove all HTML comment nodes from the document tree."""
+    comments = doc.xpath('//comment()')
+    for comment in comments:
+        parent = comment.getparent()
+        if parent is not None:
+            parent.remove(comment)
+
+
+def _remove_nodes_by_tag(doc, tag_names):
+    """Remove all elements with specified tag names.
+    
+    Args:
+        doc: lxml document tree
+        tag_names: list of tag names to remove (e.g., ['script', 'style'])
+    """
+    for tag in tag_names:
+        for el in doc.xpath(f'.//{tag}'):
+            parent = el.getparent()
+            if parent is not None:
+                try:
+                    parent.remove(el)
+                except Exception:
+                    pass
 
 def chunk_html_content( html_content: str,
                         max_tokens: int = 500,
@@ -251,3 +410,202 @@ def get_xpath(element):
         components.pop(0)
 
     return '/' + '/'.join(components)
+
+
+
+
+def _normalize_whitespace(s: str) -> str:
+    return " ".join(s.split())
+
+# You probably already have _is_visible_element in your code.
+# If not, a minimal sensible one:
+def _is_visible_element(el) -> bool:
+    # skip elements hidden by attributes
+    if el.get("hidden") is not None: 
+        return False
+    if el.get("aria-hidden") == "true":
+        return False
+    # tag filter — keep consistent with your original
+    if el.tag is None:
+        return False
+    return True
+
+from lxml import html, etree
+from typing import List, Tuple, Set
+
+def extract_visible_xpaths_leaves(
+    cleaned_html: str,
+    min_length: int = 1,
+    dedupe_texts: bool = True
+) -> List[Tuple[str, str]]:
+    """
+    Extract visible text preserving exact reading order.
+    Interleaves parent text, child elements, and child tails correctly.
+    """
+    try:
+        tree = html.fromstring(cleaned_html)
+    except etree.ParserError:
+        return []
+        
+    roottree = tree.getroottree()
+    results: List[Tuple[str, str]] = []
+    seen_texts: Set[str] = set()
+    
+    # Tags that definitely don't contain visible text
+    skip_tags = {"script", "style", "noscript", "template", "head", "meta", "link"}
+
+    def _process_node(el: html.HtmlElement):
+        """
+        Recursive function to visit nodes in reading order:
+        1. Element Text
+        2. Child 1 -> (Recurse) -> Child 1 Tail
+        3. Child 2 -> (Recurse) -> Child 2 Tail
+        """
+        if not isinstance(el.tag, str):
+            return
+
+        # 1. Check strict visibility of the tag itself
+        if el.tag.lower() in skip_tags:
+            return
+        
+        # Optional: Add your _is_visible_element(el) check here if you have it
+        # if not _is_visible_element(el): return
+
+        xpath = roottree.getpath(el)
+
+        # --- A. Handle Text inside this element (before first child) ---
+        if el.text:
+            text = _normalize_whitespace(el.text)
+            if len(text) >= min_length:
+                if not (dedupe_texts and text in seen_texts):
+                    results.append((xpath, text))
+                    seen_texts.add(text)
+
+        # --- B. Handle Children and their Tails ---
+        for child in el:
+            if not isinstance(child.tag, str): 
+                continue
+                
+            # 1. Recurse into child (this captures the child's internal text)
+            _process_node(child)
+            
+            # 2. Handle the Child's Tail 
+            # (Visually, this appears AFTER the child, but belongs to the PARENT's XPath)
+            if child.tail:
+                tail_text = _normalize_whitespace(child.tail)
+                if len(tail_text) >= min_length:
+                    if not (dedupe_texts and tail_text in seen_texts):
+                        # Note: The text physically follows 'child', but structurally belongs to 'el' (parent)
+                        results.append((xpath, tail_text))
+                        seen_texts.add(tail_text)
+
+    # Start recursion
+    _process_node(tree)
+    
+    return results
+
+
+# import re
+# from typing import List, Tuple
+# from lxml import etree, html
+
+_INDEXED_STEP_RE = re.compile(r"^([A-Za-z0-9_\-\.:]+)(?:\[(\d+)\])?$")
+
+def merge_xpaths_to_html(
+    xpath_text_list: List[Tuple[str, str]],
+    root_tag: str = "html",
+    pretty: bool = True
+) -> str:
+    """
+    Merge a list of (absolute_xpath, content) into one HTML document.
+    """
+    
+    # --- 1. Setup Root ---
+    root = etree.Element(root_tag)
+    if root_tag.lower() == 'html':
+        etree.SubElement(root, "head")
+        etree.SubElement(root, "body")
+
+    def parse_step(step: str):
+        """Parse 'div[2]' -> ('div', 2)."""
+        m = _INDEXED_STEP_RE.match(step)
+        if not m:
+            return step, 1
+        tag = m.group(1)
+        idx = int(m.group(2)) if m.group(2) else 1
+        return tag, idx
+
+    def get_nth_child(parent: etree._Element, tag: str, index: int) -> etree._Element:
+        """
+        Return (and create if missing) the Nth child of a specific tag.
+        """
+        # Find existing children with this tag
+        matches = [c for c in parent if isinstance(c.tag, str) and c.tag == tag]
+        
+        if len(matches) >= index:
+            return matches[index - 1]
+        
+        # If the element doesn't exist, create intermediates
+        while len(matches) < index:
+            try:
+                new = etree.Element(tag)
+            except ValueError:
+                # Fallback for invalid tags (e.g., 'fb:login-button' -> 'fb_login-button')
+                safe_tag = tag.replace(":", "_").replace(".", "_")
+                # If it's still invalid, fallback to generic div to prevent crash
+                try:
+                    new = etree.Element(safe_tag)
+                except ValueError:
+                    new = etree.Element("div", attrib={"original_tag": tag})
+            
+            parent.append(new)
+            matches.append(new)
+        return matches[index - 1]
+
+    # --- 2. Process Items in Input Order ---
+    for raw_xpath, content in xpath_text_list:
+        if not raw_xpath or not raw_xpath.startswith("/"):
+            continue
+
+        steps = [s for s in raw_xpath.split("/") if s]
+        
+        cur = root
+        step_index = 0
+        
+        # Skip root tag in path if it matches our root element
+        if steps and steps[0].lower() == root_tag.lower():
+            step_index = 1 
+
+        # Traverse or Build the path to the target element
+        for step in steps[step_index:]:
+            tag, idx = parse_step(step)
+            
+            # SANITIZE: lxml hates colons in tag names without namespace maps
+            if ":" in tag:
+                tag = tag.replace(":", "_")
+            
+            cur = get_nth_child(cur, tag, idx)
+
+        # --- 3. Intelligent Content Insertion ---
+        if content is None:
+            continue
+        piece = content.strip()
+        if not piece:
+            continue
+
+        try:
+            frags = html.fragments_fromstring(piece)
+        except (ValueError, etree.ParserError):
+            frags = [piece]
+
+        for frag in frags:
+            if isinstance(frag, str):
+                if len(cur) > 0:
+                    last_child = cur[-1]
+                    last_child.tail = (last_child.tail or "") + (" " if last_child.tail else "") + frag
+                else:
+                    cur.text = (cur.text or "") + (" " if cur.text else "") + frag
+            else:
+                cur.append(frag)
+
+    return etree.tostring(root, method="html", encoding="unicode", pretty_print=pretty)

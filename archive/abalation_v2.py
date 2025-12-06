@@ -25,12 +25,12 @@ import multiprocessing as mp
 # Disable Method (chunking/reranker)
 ######################################## CONSTANTS
 SWDE_DOMAINS = {
-    "auto": 17900,
-    "university": 16700,
-    "camera": 5260,
+#    "auto": 17923,
+    "university": 16705,
+    "camera": 5258,
     "book": 20000,
     "job": 20000,
-    "nbaplayer": 4410,
+    "nbaplayer": 4405,
     "movie": 20000,
     "restaurant": 20000
 }
@@ -38,32 +38,45 @@ SWDE_SAMPLES = 500
 WEBSRC_TOTAL = 50000
 WEBSRC_SAMPLES = 5000
 DISABLE_METHOD_VALUE = [False,True]
-
+CHUNK_SIZE = [
+    20,
+    50,
+    100,
+    200,
+    300,
+    400,
+    500,
+    700,
+    800,
+    1000,
+    1500,
+    2000,
+    2500 
+]
 
 ########################################## CONFIG
 
 dataset_configs = []
-for dom , val in SWDE_DOMAINS.items:
+
+for dom , val in SWDE_DOMAINS.items():
     dataset_configs.append(SWDEConfig(
         local_dir="/home/abdo/PAPER/Eval/data/swde/hf_SWDE",
-        indices=list(range(0,val,val/SWDE_SAMPLES)),  # Use a subset of the dataset for
+        indices=list(range(0,val,int(val/SWDE_SAMPLES))),  # Use a subset of the dataset for
         domain=dom,
         batch_size=5
     ))
 
 
-dataset_configs.append(WebSrcConfig(
-    html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_html_content.jsonl',
-    data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_dataset.jsonl',
-    indices= list(range(0,WEBSRC_TOTAL,WEBSRC_TOTAL/WEBSRC_SAMPLES)),
-    batch_size=5
-))
+
+# dataset_configs.append(WebSrcConfig(
+#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_html_content.jsonl',
+#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_dataset.jsonl',
+#     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
+#     batch_size=5
+# ))
 print(f"Created {len(dataset_configs)} of dataset configs.")
 
-reranker_preprocessor_config = RerankerPreprocessorConfig(
-    fetch_workers=mp.cpu_count(),
-    cpu_workers=mp.cpu_count()
-)
+
 llm_client_config = LLMClientConfig(
     model_name='google/gemma-3n-e4b-it',
 )
@@ -147,162 +160,14 @@ If the extracted answer is a subset of a larger node and the surrounding content
 - Don't omit information that directly answers the query
 - Balance brevity with completeness
 
----
-
-## Examples
-
-### Example 1: Schema-Based Extraction
-
-**Query:**
-```json
-{{
-  "id": "book.schema",
-  "description": "Extract details about a book.",
-  "type": "object",
-  "properties": {{
-    "title":{{
-      "type": "string",
-      "description": "The title of the book."
-    }},
-    "author": {{
-      "type": "string",
-      "description": "The author of the book."
-    }}
-  }}
-}}
-```
-
-**Content:**
-```
-["<html><body><div><h1>A Brief History of Time</h1><span>Author: Stephen Hawking</span></div></body></html>"]
-```
-
-**Output:**
-```json
-{{
-  "title": "A Brief History of Time",
-  "author": "Author: Stephen Hawking"
-}}
-```
-
----
-
-### Example 2: Schema with Date Extraction
-
-**Query:**
-```json
-{{
-  "id": "event.schema",
-  "description": "Extract details about an event.",
-  "type": "object",
-  "properties": {{
-    "event_name": {{
-      "type": "string",
-      "description": "The name of the event."
-    }},
-    "date": {{
-      "type": "string",
-      "description": "The date of the event."
-    }}
-  }}
-}}
-```
-
-**Content:**
-```
-["<html><body><p>Event: Annual Tech Conference</p><span>Date: 2024-10-26</span></body></html>"]
-```
-
-**Output:**
-```json
-{{
-  "event_name": "Event: Annual Tech Conference",
-  "date": "Date: 2024-10-26"
-}}
-```
-
----
-
-### Example 3: Natural Language Query (Dialect-Aware)
-
-**Query:**
-```
-How fair was the book?
-```
-
-**Content:**
-```
-["<p>The book was reasonably priced at $9.99 and had a lovely story.</p>"]
-```
-
-**Output:**
-```json
-{{
-  "answer": "$9.99"
-}}
-```
-
-*Note: "fair" interpreted as "price" based on context.*
-
----
-
-### Example 4: Boolean Answer Query
-
-**Query:**
-```
-Did the review mention if the event was successful?
-```
-
-**Content:**
-```
-["<p>The conference was a huge success, with over 500 attendees.</p>"]
-```
-
-**Output:**
-```json
-{{
-  "answer": "Yes"
-}}
-```
-
----
-
-### Example 5: Missing Information
-
-**Query:**
-```json
-{{
-  "type": "object",
-  "properties": {{
-    "price": {{"type": "number"}},
-    "isbn": {{"type": "string"}}
-  }}
-}}
-```
-
-**Content:**
-```
-["<p>This book costs $15.99</p>"]
-```
-
-**Output:**
-```json
-{{
-  "price": 15.99,
-  "isbn": null
-}}
-```
-
----
-
 
 NOW EXTRACT THIS
 ```
-Query:
-{query}
-
 Content:
 {content}
+
+Query:
+{query}
 ```
 
 **Remember:** Respond with ONLY the JSON object. No additional text, explanations, or markdown formatting.
@@ -327,21 +192,69 @@ LEARN FROM THE EXAMPLES AND FOLLOW THE INSTRUCTIONS OR YOU WILL FACE YOUR DEATH.
 
 
 
+
+########################################## RUN
+for data_cfg in dataset_configs:
+    for sz in CHUNK_SIZE:
+        for method_status in [False]:
+            name = "swde_" if isinstance(data_cfg,SWDEConfig) else "websrc_"
+            name += data_cfg.domain if isinstance(data_cfg,SWDEConfig) else ""
+            name += '_' + 'without' if method_status else 'with'
+            name += '_' + str(sz)
+
+            reranker_postprocessor_config = RerankerPostprocessorConfig(
+                exact_extraction= isinstance(data_cfg,SWDEConfig) and not method_status
+            )
+            reranker_preprocessor_config = RerankerPreprocessorConfig(
+                strip_attrs=False,
+                attr_cutoff_len=10,
+                chunk_size=sz,
+                fetch_workers=mp.cpu_count(),
+                cpu_workers=mp.cpu_count()
+            )
+            reranker_pipeline_config = RerankerPipelineConfig(
+                preprocessor_config=reranker_preprocessor_config,
+                extractor_config=reranker_extractor_config,
+                postprocessor_config=reranker_postprocessor_config,
+                disable_method=method_status
+            )
+
+
+            exp_config = ExperimentConfig(
+                experiment_name=name,
+                seed=42,
+                pipeline_config=reranker_pipeline_config,
+                dataset_config=data_cfg,
+                output_dir=name
+            )
+            exp = Experiment(exp_config,resume=True)
+            print(f"[Running]: Current Experiment {name}")
+            exp.run()
+
 for data_cfg in dataset_configs:
     for method_status in DISABLE_METHOD_VALUE:
+        sz = 500
         name = "swde_" if isinstance(data_cfg,SWDEConfig) else "websrc_"
         name += data_cfg.domain if isinstance(data_cfg,SWDEConfig) else ""
-        name += str(method_status)
+        name += '_' + 'without' if method_status else 'with'
+        name += '_' + str(sz)
 
         reranker_postprocessor_config = RerankerPostprocessorConfig(
-            exact_extraction= isinstance(data_cfg,SWDEConfig)
+            exact_extraction= isinstance(data_cfg,SWDEConfig) and not method_status
+        )
+        reranker_preprocessor_config = RerankerPreprocessorConfig(
+            strip_attrs=False,
+            attr_cutoff_len=10,
+            chunk_size=sz,
+            fetch_workers=mp.cpu_count(),
+            cpu_workers=mp.cpu_count()
         )
         reranker_pipeline_config = RerankerPipelineConfig(
             preprocessor_config=reranker_preprocessor_config,
             extractor_config=reranker_extractor_config,
             postprocessor_config=reranker_postprocessor_config,
             disable_method=method_status
-            )
+        )
 
 
         exp_config = ExperimentConfig(
@@ -352,6 +265,5 @@ for data_cfg in dataset_configs:
             output_dir=name
         )
         exp = Experiment(exp_config,resume=False)
+        print(f"[Running]: Current Experiment {name}")
         exp.run()
-
-########################################## RUN

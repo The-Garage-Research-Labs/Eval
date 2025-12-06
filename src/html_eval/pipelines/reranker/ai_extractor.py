@@ -3,12 +3,17 @@ import polars as pl
 import os
 import math
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Iterable
+
 import torch
 from html_eval.core.experiment import Experiment
 from html_eval.configs.pipeline_config import RerankerExtractorConfig
+from html_eval.util.html_util import merge_html_chunks, extract_visible_xpaths_leaves, merge_xpaths_to_html, clean_html
+import ast
+import concurrent.futures
+import time
+import re
 
-            
 class AIExtractor:
 
     def __init__(self, config: RerankerExtractorConfig):
@@ -16,6 +21,11 @@ class AIExtractor:
         self.config = config
 
         self.llm_client = self.config.llm_config.create_llm_client()
+        if self.config.same_llm_config:
+            self.llm_pruner_client = self.llm_client
+        else:
+            self.llm_pruner_client = self.config.llm_pruner_config.create_llm_client()
+
         self.prompt_template = self.config.generation_prompt_template
         self.model_name: str = self.config.reranker_huggingface_model
         self.max_length = self.config.reranker_max_prompt_length
@@ -82,6 +92,7 @@ class AIExtractor:
         no_id = tok("no", add_special_tokens=False).input_ids[0]
 
         sampling = SamplingParams(
+            seed=self.experiment._config.seed,
             temperature=0,
             max_tokens=1,
             logprobs=20,
@@ -156,51 +167,306 @@ class AIExtractor:
             scores.append(prob_yes)
         
         return scores
+    
 
-    def _filter(self, batch: pl.DataFrame , threshold = 0.5) -> pl.DataFrame:
+
+    def _longest_common_xpath_prefix(self, xpaths: Iterable[str]) -> str:
         """
-        Filter the batch based on a threshold.
-        Returns a DataFrame with only the rows that have a score above the threshold.
+        Compute the longest common xpath prefix across the provided xpaths.
+        We treat '/' as separator and only cut at path boundaries (i.e., between steps).
+        Returns '/' when there is no non-empty common prefix.
+        """
+        # keep only non-empty strings
+        parts_list = []
+        for xp in xpaths:
+            if not xp:
+                continue
+            # normalize: ensure starts with '/'
+            s = xp if xp.startswith("/") else "/" + xp
+            # split keeps leading '' for the initial slash; that's fine
+            parts_list.append(s.split("/"))
+
+        if not parts_list:
+            return "/"
+
+        # find common prefix of lists of path segments
+        common = []
+        for segs in zip(*parts_list):
+            # segs contains the next segment from each path
+            if all(seg == segs[0] for seg in segs):
+                common.append(segs[0])
+            else:
+                break
+
+        # join back; if common is only [''] (only leading slash) -> return '/'
+        if not common or (len(common) == 1 and common[0] == ""):
+            return "/"
+        prefix = "/".join(common)
+        # ensure it begins with '/'
+        if not prefix.startswith("/"):
+            prefix = "/" + prefix
+        return prefix
+
+
+    def _escape_single_quotes(self, s: str) -> str:
+        """Escape single quotes for insertion inside single-quoted string in the prompt."""
+        if s is None:
+            return ""
+        return s.replace("'", "\\'")
+
+
+    def _remove_prefix_from_xpath(self, xpath: str, prefix: str) -> str:
+        """
+        Remove prefix from xpath following rules:
+        - If xpath == prefix -> return '/'
+        - If xpath startswith prefix -> remove prefix and ensure resulting path starts with '/'
+        - Otherwise return xpath unchanged (but ensure it starts with '/')
+        """
+        if xpath is None or xpath == "":
+            return "/"
+        if not xpath.startswith("/"):
+            xpath = "/" + xpath
+        if prefix == "/":
+            # nothing to remove
+            return xpath
+        if xpath == prefix:
+            return "/"
+        if xpath.startswith(prefix):
+            rel = xpath[len(prefix):]
+            # if removal yields empty or not starting with '/', ensure leading slash
+            if rel == "" or not rel.startswith("/"):
+                rel = "/" + rel.lstrip("/")
+            return rel
+        # doesn't start with prefix: return as-is (ensure leading slash)
+        return xpath
+
+
+    def _promp_gen(self, xpath_content_pair_ls: List, query: str) -> str:
+        """
+        Build the prompt string for the LLM pruner.
+
+        - xpath_content_pair_ls is expected to be an iterable of pairs/tuples like:
+            (xpath, content_text)
+        but this function tolerates several shapes (tuples, lists, dicts with keys 'xpath'/'content').
+        - query is inserted into the template at {query} and content at {content}.
+        """
+        # Normalize input into list of (xpath, text) tuples while preserving original index order
+        normalized = []
+        for pair in xpath_content_pair_ls:
+            if pair is None:
+                normalized.append(("", ""))
+                continue
+            # tuple/list-like: (xpath, text)
+            if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+                xpath, text = pair[0] or "", pair[1] or ""
+            elif isinstance(pair, dict):
+                xpath = pair.get("xpath", "") or pair.get("0", "") or ""
+                text = pair.get("content", "") or pair.get("1", "") or ""
+            else:
+                # fallback: try to coerce to str
+                try:
+                    # if pair is something like a Series
+                    xpath = str(pair[0]) if getattr(pair, "__len__", None) and len(pair) >= 1 else ""
+                    text = str(pair[1]) if getattr(pair, "__len__", None) and len(pair) >= 2 else ""
+                except Exception:
+                    xpath, text = "", str(pair)
+            normalized.append((xpath, text))
+
+        # collect xpaths for prefix computation
+        xpaths_for_prefix = [xp for xp, _ in normalized if xp]
+        prefix = self._longest_common_xpath_prefix(xpaths_for_prefix)
+
+        # Build the content block lines with prefix removed and single quotes escaped
+        lines = []
+        # top line
+        lines.append(f"The entire chunk is under: '{self._escape_single_quotes(prefix)}'")
+
+        for idx, (xp, txt) in enumerate(normalized):
+            rel = self._remove_prefix_from_xpath(xp, prefix)
+            # ensure strings and escape single quotes
+            rel_escaped = self._escape_single_quotes(rel)
+            txt_escaped = self._escape_single_quotes(txt)
+            # ensure the relative xpath string begins with a slash (or is '/')
+            if not rel_escaped.startswith("/"):
+                rel_escaped = "/" + rel_escaped
+            lines.append(f"{idx} ('{rel_escaped}', '{txt_escaped}')")
+
+        full_content = "\n".join(lines)
+        # Insert into your configured template (keeps original behaviour)
+        prompt = self.config.llm_pruner_prompt.format(query=query, content=full_content)
+        return prompt
+
+    
+    # def _llm_filter(self, chunk_content: str, query: str ) -> str:
+    #     chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
+    #     prompt = self._promp_gen(chunk_xpaths, query)
+    #     response = self.llm_pruner_client.call_api(prompt)
+    #     # for i , x in chunk_xpaths:
+    #     #     print(f"{i} : {x}")
+
+    #     # print("-"*80)
+    #     # print("prompt: ", prompt)
+    #     # print("response: ", response)
+    #     # print("-"*80)
+
+    #     match = re.search(r'\[(.*?)\]', response, re.DOTALL)
+    #     if match:
+    #         inside = "[" + match.group(1).strip() + "]"  # rebuild valid list string
+    #         try:
+    #             chosen = ast.literal_eval(inside)
+    #         except Exception as e:
+    #             print("Error evaluating list:", e)
+    #             chosen = []
+    #     else:
+    #         chosen = []
+
+    #     final_list = []
+    #     for idx in chosen:
+    #         if 0 <= idx < len(chunk_xpaths):
+    #             final_list.append(chunk_xpaths[idx])
+    #     # print("THIS IS THE FINAL LIST: ", final_list )
+    #     # final_content = merge_xpaths_to_html(final_list)
+    #     # final_content = clean_html(final_content)
+    #     final_content = final_list
+    #     # print("final_content: ", final_content)
+    #     return final_content
+
+
+
+
+    def _filter(self, batch: pl.DataFrame, threshold: float = 0.5) -> pl.DataFrame:
+        """
+        Filter the batch based on a threshold and LLM pruning.
+        FIXED: Preserves context order by storing xpaths for every row.
         """
         if 'score_norm' not in batch.columns:
-            raise ValueError("Batch must contain 'score' column for filtering.")
-        # print(f"SHAPE BEFORE FILTER {batch.shape}")
-        # print(batch)
+            raise ValueError("Batch must contain 'score_norm' column for filtering.")
+
+        # 1. Basic numeric filter
         filtered_batch = batch.filter(pl.col('score_norm') >= threshold)
-        # print(f"SHAPE AFTER FILTER {batch.shape}")
-        # print(batch)
-        return filtered_batch
+
+        if filtered_batch.height == 0:
+            return filtered_batch
+
+        if not self.config.use_llm_pruner:
+            return filtered_batch
+        
+        max_workers = getattr(self.config, "llm_pruner_workers", None) or min(32, (os.cpu_count() or 1) * 5)
+
+        rows: List[Dict[str, Any]] = filtered_batch.select(["chunkcontent", "query"]).to_dicts()
+        
+        prompts = []
+        # NEW: We must save the specific xpaths for each row to use during extraction later
+        all_rows_xpaths = [] 
+
+        # 2. Prepare Prompts and Context
+        for row in rows:
+            chunk_content = row['chunkcontent']
+            query = row['query']
+            
+            # Extract structure
+            chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
+            
+            # Store it! Crucial for fixing the order bug.
+            all_rows_xpaths.append(chunk_xpaths) 
+            
+            prompt = self._promp_gen(chunk_xpaths, query)
+            prompts.append(prompt)
+        
+        # 3. Batch Inference
+        # Your LLMClient correctly preserves list index order, so prompts[0] matches llm_results[0]
+        llm_results = self.llm_pruner_client.call_batch(prompts, max_workers=max_workers,  adapter_name="pruner")
+        
+        # 4. Extract Results mapping strictly to the correct row
+        final_pruned_contents = []
+
+        # zip ensures we match the Response with the specific XPaths from that specific row
+        for response, row_xpaths in zip(llm_results, all_rows_xpaths):
+            if not response: 
+                # Handle failed LLM call: return original or empty? 
+                # Usually safer to return original list or empty list depending on logic.
+                final_pruned_contents.append(row_xpaths) 
+                continue
+
+            match = re.search(r'\[(.*?)\]', response, re.DOTALL)
+            chosen = []
+            if match:
+                inside = "[" + match.group(1).strip() + "]"
+                try:
+                    chosen = ast.literal_eval(inside)
+                except Exception as e:
+                    print("Error evaluating list:", e)
+                    chosen = []
+            
+            # Filter the specific xpaths for THIS row based on indices
+            row_final_list = []
+            for idx in chosen:
+                # Ensure index is valid for THIS specific row's content
+                if isinstance(idx, int) and 0 <= idx < len(row_xpaths):
+                    row_final_list.append(row_xpaths[idx])
+            
+            # If you want to merge back to HTML, uncomment:
+            # final_content = merge_xpaths_to_html(row_final_list)
+            # final_content = clean_html(final_content)
+            
+            # Currently returning list of tuples as per your snippet
+            final_pruned_contents.append(row_final_list)
+        print("final_content: ", final_pruned_contents)
+        # 5. Update the DataFrame
+        # We replace the 'chunkcontent' (or create a new col) with the pruned version
+        # Use pl.Series to maintain alignment with the filtered_batch
+        return filtered_batch.with_columns(
+            pl.Series(name="chunkcontent", values=final_pruned_contents)
+        )
+
+
 
 
     def _generate_output(self, batch: pl.DataFrame) -> pl.DataFrame:
-        # Group by doc_id and concatenate chunks, while preserving the query column
-        # print(f"BATCH SHAPE {batch.shape}")
-        # print(f"Columns: {batch.columns}")
-        df_grouped = batch.group_by("doc_id", maintain_order=True).agg(
-            [pl.col(col).first() for col in batch.columns if col not in ("chunkcontent", "doc_id",'chunkid', 'score', 'score_norm')]
-            + [pl.concat_str("chunkcontent", separator="\n").alias("full_content")]
+        """
+        Group by doc_id, merge HTML chunks using BeautifulSoup, remove newline chars,
+        build prompts, call LLM in batch, and attach responses.
+        """
+        excluded = {"chunkcontent", "chunkid", "score", "score_norm", "doc_id"}
+        # Collect other columns with first() and collect chunkcontent into a list
+        agg_exprs = [
+            pl.col(col).first()
+            for col in batch.columns
+            if col not in excluded
+        ] + [
+            # Correct: just reference the column - it automatically aggregates into a list
+            pl.col("chunkcontent").alias("chunks")
+        ]
+        # Group and aggregate
+        df_grouped = batch.group_by("doc_id", maintain_order=True).agg(agg_exprs)
+        
+        # Merge chunks using your Python function per-row, then remove newlines
+        df_grouped = df_grouped.with_columns(
+            pl.col("chunks")
+            .map_elements(lambda chunks: merge_html_chunks(chunks), return_dtype=pl.Utf8)
+            .alias("full_content")
+        ).drop("chunks")
+        
+        # Remove newline characters
+        df_grouped = df_grouped.with_columns(
+            pl.col("full_content").str.replace_all("\n", "").alias("full_content")
         )
-        # print(f"GROUPED BATCH SHAPE {df_grouped.shape}")
-        # Create the prompt using the prompt template
+        
+        # Build prompt column
         df_prompt = df_grouped.with_columns(
             pl.struct(["query", "full_content"]).map_elements(
                 lambda s: self.prompt_template.format(query=s["query"], content=s["full_content"]),
-                return_dtype=pl.String  # Specify return type for clarity
+                return_dtype=pl.Utf8
             ).alias("prompt")
         )
-        # print(f"DF PROMPT SHAPE {df_prompt.shape}")
+
+        # Call LLM and attach responses
         prompts = df_prompt["prompt"].to_list()
-        # print("Generating prompts for LLM...")
-        # Call the LLM client to get the responses
         responses = self.llm_client.call_batch(prompts)
-        
         df_response = df_prompt.with_columns(
             pl.Series("response", responses, dtype=pl.Utf8)
         )
-        # print("Final DataFrame with responses:")
-        # print(df_response)
         return df_response
-
   
     
     def extract(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -241,12 +507,12 @@ class AIExtractor:
         # Filter the DataFrame based on the score threshold
         filtered_df = self._filter(norm_df, threshold=self.reranker_classification_threshold)
         # print(f"Shape before: generates {filtered_df.shape} ")
-
+        # print(filtered_df)
         generated_df = self._generate_output(filtered_df)
         # print(f"Shape before: extract exact {filtered_df.shape} ")
 
         final_df = generated_df
-
+        # print(final_df)
         return final_df 
 
         

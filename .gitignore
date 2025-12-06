@@ -11,3 +11,6 @@ checkpoints/
 outputs/
 output/
 test*
+*.png
+swde_*
+websrc_*

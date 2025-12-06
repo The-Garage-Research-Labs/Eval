@@ -4,16 +4,18 @@ from functools import wraps
 import os
 import random
 import time
-from typing import List, Iterable, Optional, Any, Callable
+from typing import List, Iterable, Optional, Any, Callable, Dict
 
 from openai import OpenAI
 from openai import RateLimitError
 
 try:
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
 except ImportError:
     raise ImportError("vLLM is not installed. Please install it with 'pip install vllm'")
-
+import threading
+_vllm_init_lock = threading.Lock()
 
 def retry_on_ratelimit(max_retries=5, base_delay=1.0, max_delay=10.0):
     def deco(fn):
@@ -155,7 +157,7 @@ class NvidiaLLMClient(LLMClient):
         # print("prompt:", prompt)  # keep optional for debugging
         response = self.client.chat.completions.create(
             model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role":"system","content":"Reasoning: high"},{"role": "user", "content": prompt}],
             temperature=self.temperature,
             top_p=self.top_p,
             max_tokens=self.max_tokens,
@@ -167,12 +169,7 @@ class NvidiaLLMClient(LLMClient):
     # Optionally override call_batch if the vendor supports true batched calls.
     # For now, we inherit the default implementation from LLMClient.
 
-
 class VLLMClient(LLMClient):
-    """
-    Concrete LLMClient implementation that loads a vLLM model directly in the script.
-    """
-
     def __init__(self, config: dict):
         super().__init__(config)
         
@@ -183,8 +180,30 @@ class VLLMClient(LLMClient):
         # vLLM-specific engine arguments (e.g., for multi-GPU)
         engine_args = config.get("engine_args", {})
 
-        # Load the model into memory
-        self.llm = LLM(model=model_name, **engine_args)
+        # Check if pre-defined loras exist in config to auto-enable LoRA support
+        self.lora_config = config.get("lora_modules", {}) # Format: {"name": "path/to/lora"}
+        print("LoRA modules to load:", self.lora_config)
+        if self.lora_config or config.get("enable_lora", False):
+            engine_args["enable_lora"] = True
+            # Optional: Tune these based on VRAM (defaults usually work)
+            # engine_args["max_loras"] = 4 
+            # engine_args["max_lora_rank"] = 64
+        print(f"Initializing vLLM model '{model_name}' with engine args: {engine_args}")
+        # Guard initialization with a global lock to avoid races
+        with _vllm_init_lock:
+            self.llm = LLM(model=model_name, **engine_args)
+
+        # 2. Initialize LoRA Registry
+        # vLLM requires a unique integer ID for every loaded adapter.
+        self.lora_requests: Dict[str, LoRARequest] = {}
+        self._lora_id_counter = 1
+        
+        # Load adapters defined in config
+        for name, path in self.lora_config.items():
+            self.load_adapter(name, path)
+
+        # per-instance lock to serialize calls to self.llm.generate(...)
+        self._generate_lock = threading.Lock()
         
         # Default generation config
         gen_conf = config.get("generation_config", {})
@@ -192,60 +211,91 @@ class VLLMClient(LLMClient):
         self.top_p = gen_conf.get("top_p", 1.0)
         self.max_tokens = gen_conf.get("max_tokens", 512)
         self.stop_sequences = gen_conf.get("stop", [])
+        self.enable_thinking = config.get("enable_thinking", False)
 
-
-    def call_api(self, prompt: str, **kwargs) -> str:
+    def load_adapter(self, name: str, path: str):
         """
-        Generates text from a single prompt using the loaded vLLM model.
+        Registers a LoRA adapter so it can be called by name.
+        """
+        if name in self.lora_requests:
+            return # Already loaded
         
-        Args:
-            prompt: The input prompt string.
-            kwargs: Overrides for generation parameters (e.g., temperature, max_tokens).
+        # Create the vLLM request object with a unique ID
+        self.lora_requests[name] = LoRARequest(
+            lora_name=name,
+            lora_int_id=self._lora_id_counter,
+            lora_path=path
+        )
+        self._lora_id_counter += 1
 
-        Returns:
-            The generated text as a string.
+    def _get_lora_request(self, adapter_name: Optional[str]) -> Optional[LoRARequest]:
+        """Helper to retrieve the LoRA object or None."""
+        if not adapter_name:
+            return None
+        
+        if adapter_name not in self.lora_requests:
+            print(f"LoRA adapter '{adapter_name}' not found. Available: {list(self.lora_requests.keys())}")
+            return None
+        
+        return self.lora_requests[adapter_name]
+
+    def _format_prompt_with_thinking(self, prompt: str) -> str:
+        if self.enable_thinking:
+            return f"{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        else:
+            return f"{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+    
+    def _create_sampling_params(self, **kwargs) -> SamplingParams:
+        return SamplingParams(
+            seed        = kwargs.get("seed", self.config.get("seed", None)),
+            temperature = kwargs.get("temperature", self.temperature),
+            top_p       = kwargs.get("top_p", self.top_p),
+            max_tokens  = kwargs.get("max_tokens", self.max_tokens),
+            stop        = kwargs.get("stop", self.stop_sequences),
+        )
+    
+    def call_api(self, prompt: str, adapter_name: str = None, **kwargs) -> str:
+        """
+        :param adapter_name: The string name of the LoRA to use (must be loaded first).
         """
         sampling_params = self._create_sampling_params(**kwargs)
+        prompt = self._format_prompt_with_thinking(prompt)
         
-        # vLLM's generate method expects a list of prompts
-        outputs = self.llm.generate([prompt], sampling_params)
-        
-        # The output is a list of RequestOutput objects
+        # Retrieve the specific LoRA object
+        lora_req = self._get_lora_request(adapter_name)
+
+        with self._generate_lock:
+            # Pass lora_request to generate
+            outputs = self.llm.generate(
+                [prompt], 
+                sampling_params, 
+                lora_request=lora_req
+            )
         return outputs[0].outputs[0].text
 
     def call_batch(
         self,
         prompts: Iterable[str],
+        adapter_name: str = None,
         **call_api_kwargs,
     ) -> List[Optional[str]]:
         """
-        Overrides the base implementation to use vLLM's internal batching for efficiency.
-        
-        Args:
-            prompts: An iterable of prompt strings.
-            call_api_kwargs: Keyword arguments for SamplingParams.
-
-        Returns:
-            A list of generated text strings, in the same order as the input prompts.
+        Note: vLLM applies the SAME LoRA to the entire batch in this implementation.
         """
         prompts = list(prompts)
         sampling_params = self._create_sampling_params(**call_api_kwargs)
+        prompts = [self._format_prompt_with_thinking(p) for p in prompts]
         
-        outputs = self.llm.generate(prompts, sampling_params)
-        
-        # Extract the text from each output, maintaining order
-        results = [output.outputs[0].text for output in outputs]
-        return results
+        # Retrieve the specific LoRA object
+        lora_req = self._get_lora_request(adapter_name)
+        print(f"Using LoRA adapter: {adapter_name}")
+        with self._generate_lock:
+            outputs = self.llm.generate(
+                prompts, 
+                sampling_params, 
+                lora_request=lora_req
+            )
 
-    def _create_sampling_params(self, **kwargs) -> "SamplingParams":
-        """Helper to create SamplingParams from config and runtime overrides."""
-        return SamplingParams(
-            temperature=kwargs.get("temperature", self.temperature),
-            top_p=kwargs.get("top_p", self.top_p),
-            max_tokens=kwargs.get("max_tokens", self.max_tokens),
-            stop=kwargs.get("stop", self.stop_sequences),
-            # Add any other SamplingParams you want to control
-            # n=kwargs.get("n", 1),
-            # frequency_penalty=kwargs.get("frequency_penalty", 0.0),
-            # presence_penalty=kwargs.get("presence_penalty", 0.0),
-        )
+        results = [output.outputs[0].text for output in outputs]
+        
+        return results

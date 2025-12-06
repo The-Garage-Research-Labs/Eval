@@ -64,9 +64,12 @@ class RerankerPreprocessorConfig:
 @dataclass
 class RerankerExtractorConfig:
     llm_config: LLMClientConfig
+    llm_pruner_config: LLMClientConfig
     classification_prompt_template: str
     generation_prompt_template: str
+    llm_pruner_prompt: str
 
+    same_llm_config: bool = False
     disable_reranker: bool = False
     reranker_huggingface_model: str = "abdo-Mansour/Qwen3-Reranker-0.6B-HTML"
     reranker_max_prompt_length: int = 8192
@@ -77,6 +80,9 @@ class RerankerExtractorConfig:
     reranker_gpu_memory_utilization: float = 0.7
     reranker_enable_prefix_caching: bool = True
     reranker_classification_threshold: float = 0.5
+
+    use_llm_pruner:  bool = True
+
 
     def to_dict(self) -> Dict[str, Any]:
         # This implementation correctly handles the nested llm_config

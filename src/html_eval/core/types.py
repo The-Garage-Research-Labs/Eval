@@ -40,13 +40,14 @@ class Sample(dict):
 class SamplePrediction(dict):
     """
     A single prediction corresponding to a Sample.
-    Acts like both a dict and an object with attributes.
+    Acts like both a dict and an object with attrib utes.
     """
     id: str
     query: str
     ground_truth: str
     prediction: Union[str, dict]
     filtered_html: str
+    content: str
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

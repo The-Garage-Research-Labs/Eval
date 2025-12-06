@@ -44,6 +44,7 @@ class Experiment:
         # filesystem paths
         self._output_dir = self._config.output_dir
         os.makedirs(self._output_dir, exist_ok=True)
+        self._save_config()
         self._results_file = os.path.join(self._output_dir, "results.json")
         self._metric_dir = os.path.join(self._output_dir, "metric")
         self._checkpoint_file = os.path.join(self._output_dir, "checkpoint.json")
@@ -297,7 +298,10 @@ class Experiment:
                         continue
 
                     finally:
-                        del batch, pred
+                        if 'batch' in locals():
+                            del batch
+                        if 'pred' in locals():
+                            del pred
                         gc.collect()
                         if torch is not None and torch.cuda.is_available():
                             torch.cuda.empty_cache()

@@ -129,7 +129,7 @@ class PostProcessor:
                 "query": row.get(query_col),
                 "ground_truth": row.get(gt_col),
                 "filtered_html": row.get(filtered_html_col),
-                "content": content_val if (self._exact_extraction and content_val is not None) else "",
+                "content": content_val,
             })
 
         preds = self.process_responses(

@@ -29,7 +29,7 @@ class MatcherConfig:
     fuzzy_threshold: int = 90  # 0-100
 
 # --------------------------
-# Matcher (exact / fuzzy) # TODO: Add Embedder Evaluation
+# Matcher (exact / fuzzy)
 # --------------------------
 class Matcher:
     def __init__(self, cfg: Optional[MatcherConfig] = None):
@@ -43,22 +43,27 @@ class Matcher:
         - If list -> return list filtered for non-null
         - If string begins with '[' parse literal -> list
         - Else single-item list
+
         Normalization includes:
-        - HTML unescaping (&amp; -> &)
+        - HTML unescaping (&amp; -> &, &nbsp; -> ' ')
         - Dedenting multi-line text
         - Stripping leading/trailing whitespace
+        - Collapsing multiple spaces
         """
         def clean_text(x: str) -> str:
             if not isinstance(x, str):
                 return x
             x = textwrap.dedent(x)              # remove indentation
-            x = html.unescape(x)                # decode &amp; etc.
-            x = re.sub(r'\s+', ' ', x).strip()  # normalize spaces
+            x = html.unescape(x)                # decode &amp;, &lt;, etc.
+            x = x.replace('\xa0', ' ')          # convert non-breaking spaces to normal spaces
+            x = re.sub(r'\s+', ' ', x).strip()  # normalize whitespace
             return x
 
+        # early exit if not null and not string-literal
         if not is_not_null(gt) and not (isinstance(gt, str) and gt.strip().startswith("[")):
             return []
 
+        # parse GT into list
         if isinstance(gt, list):
             items = gt
         elif isinstance(gt, str):
@@ -73,9 +78,8 @@ class Matcher:
         else:
             items = [gt]
 
-        # normalize each item
+        # normalize each item and filter out nulls
         return [clean_text(it) for it in items if is_not_null(it)]
-
 
     def compare(self, gt: Any, pred: Any) -> bool:
         """
@@ -110,11 +114,22 @@ class Matcher:
                     continue
             return False
         else:
+
+            tmp_pred = pred_s
+            
+            candidates = sorted(candidates, key=lambda x: len(str(x)), reverse=True)
+
             for c in candidates:
                 if isinstance(pred, (int, float)) and isinstance(c, (int, float)):
                     if pred == c:
                         return True
-                if normalize_text(str(c)) == pred_s:
-                    return True
+                
+                tmp_c = normalize_text(str(c))
+                if tmp_c in tmp_pred:
+                    tmp_pred = tmp_pred.replace(tmp_c, '')
+                    if not tmp_pred.strip():
+                        return True
+                
+                
             return False
 

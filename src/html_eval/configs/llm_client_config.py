@@ -11,9 +11,12 @@ class LLMClientConfig:
     temperature: float = 0.0
     top_p: float = 0.7
     max_tokens: int = 8192
+    seed: int = 42
+    enable_thinking: bool = False
     
     # vLLM-specific args (engine init, like tensor_parallel, gpu_mem_utilization, etc.)
     engine_args: Dict[str, Any] = field(default_factory=dict)
+    lora_modules: Optional[Dict[str, str]] = None  # e.g., {"lora_A_path": "path/to/lora_A", "lora_B_path": "path/to/lora_B"}
 
     def create_llm_client(self) -> LLMClient:
         config = {
@@ -24,11 +27,13 @@ class LLMClientConfig:
                 "top_p": self.top_p,
                 "max_tokens": self.max_tokens,
             },
+            "enable_thinking": self.enable_thinking,
         }
 
         # only pass engine_args if vLLM
         if self.llm_source == "vllm":
             config["engine_args"] = self.engine_args
+            config["lora_modules"] = self.lora_modules
             return VLLMClient(config=config)
         elif self.llm_source == "nvidia":
             return NvidiaLLMClient(config=config)

@@ -3,8 +3,8 @@ from typing import Iterable, List, Optional, Dict, Any, Union
 import os
 import polars as pl
 
-from html_eval.util.json_util import extract_and_repair_json , is_schema
-from html_eval.util.html_util import find_closest_html_node ,normalize_html_text
+from html_eval.util.json_util import extract_and_repair_json, is_schema
+from html_eval.util.html_util import find_closest_html_node, normalize_html_text, clean_html_rag
 from html_eval.core.types import SamplePrediction
 from html_eval.configs.pipeline_config import RerankerPostprocessorConfig
 
@@ -12,7 +12,7 @@ from html_eval.configs.pipeline_config import RerankerPostprocessorConfig
 # module-level so ProcessPoolExecutor can pickle it
 def _safe_extract(response: str, meta: Dict[str, Any], extract_exact: bool) -> Dict[str, Any]:
     try:
-        
+        # print("RESPONSE ", response)
         parsed_response = extract_and_repair_json(response ,not is_schema(meta['query']))
 
         if isinstance(parsed_response,str):
@@ -38,6 +38,8 @@ def _safe_extract(response: str, meta: Dict[str, Any], extract_exact: bool) -> D
                     # ensure value is a str for matching
                     val_str = str(value)
                     # best_match = find_best_match(content, val_str)
+                    # clean 
+                    # content = clean_html_rag(content)
                     best_match = find_closest_html_node(html_text=content,search_text=val_str)
                     # if best_match is None, keep original or set None
                     parsed_response[attribute] = normalize_html_text(best_match['text']) if best_match and 'text' in best_match else None

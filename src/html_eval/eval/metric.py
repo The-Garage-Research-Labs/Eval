@@ -436,13 +436,16 @@ class PageLevelF1(Metric):
 
     def _update_counts_for_sample(self, website: str, field: str, pred, gt, pred_match_gt: bool):
         self._ensure_field_entry(website, field)
-        if pred_match_gt:
+        pred_field_not_null = (field in pred) and is_not_null(pred[field])
+        gt_field_not_null = (field in gt) and is_not_null(gt[field])
+
+        if pred_match_gt and (pred_field_not_null and gt_field_not_null):
             self._website_field_counts[website][field]['page_hits'] += 1
 
-        if is_not_null(pred) and ((field not in pred) or is_not_null(pred.get(field))):
+        if is_not_null(pred) and (pred_field_not_null):
             self._website_field_counts[website][field]['extracted_pages'] += 1
 
-        if is_not_null(gt) and ((field not in gt) or is_not_null(gt.get(field))):
+        if is_not_null(gt) and (gt_field_not_null):
             self._website_field_counts[website][field]['ground_truth_pages'] += 1
 
     def _compute_aggregations(self):
@@ -460,10 +463,11 @@ class PageLevelF1(Metric):
                 ground_truth = metrics['ground_truth_pages']
                 page_hits = metrics['page_hits']
 
-                if extracted == 0 or ground_truth == 0:
-                    f1 = 0.0
-                    precision = 0.0
-                    recall = 0.0
+                if extracted == 0 and ground_truth == 0:
+                    f1 = 1.0
+                    precision = 1.0
+                    recall = 1.0
+                #NOTE: take care of edge case where extracted or ground_truth is zero
                 else:
                     precision = page_hits / extracted if extracted > 0 else 0.0
                     recall = page_hits / ground_truth if ground_truth > 0 else 0.0
@@ -500,8 +504,8 @@ class PageLevelF1(Metric):
                         extracted = wf.get('extracted_pages', 0)
                         ground_truth = wf.get('ground_truth_pages', 0)
                         page_hits = wf.get('page_hits', 0)
-                        if extracted == 0 or ground_truth == 0:
-                            pf, pr, fr = 0.0, 0.0, 0.0
+                        if extracted == 0 and ground_truth == 0:
+                            pf, pr, fr = 1.0, 1.0, 1.0
                         else:
                             pf = page_hits / extracted if extracted > 0 else 0.0
                             pr = page_hits / ground_truth if ground_truth > 0 else 0.0

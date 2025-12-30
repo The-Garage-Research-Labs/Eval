@@ -23,7 +23,6 @@ blake3==1.0.8
 blinker==1.9.0
 brotli==1.1.0
 bs4==0.0.2
-cachetools==6.2.2
 cbor2==5.7.1
 celery==5.5.3
 certifi==2025.11.12
@@ -53,7 +52,6 @@ dateparser==1.2.2
 debugpy==1.8.16
 decorator==5.2.1
 depyf==0.19.0
-dill==0.4.0
 diskcache==5.6.3
 distro==1.9.0
 dnspython==2.8.0
@@ -68,7 +66,6 @@ easyocr==1.7.2
 einops==0.8.1
 email-validator==2.3.0
 et-xmlfile==2.0.0
--e file:///home/abdo/PAPER/Eval
 exceptiongroup==1.3.0
 executing==2.2.0
 faiss-cpu==1.11.0.post1
@@ -87,7 +84,6 @@ flask==3.1.2
 fonttools==4.60.0
 frozendict==2.4.7
 frozenlist==1.8.0
-fsspec==2025.10.0
 fuzzywuzzy==0.18.0
 gguf==0.17.1
 gitdb==4.0.12
@@ -207,7 +203,6 @@ nvidia-ml-py==13.580.82
 nvidia-nccl-cu12==2.26.2
 nvidia-nvjitlink-cu12==12.6.85
 nvidia-nvtx-cu12==12.6.77
-openai==2.9.0
 openai-harmony==0.0.8
 openapi-core==0.19.5
 openapi-pydantic==0.5.1
@@ -230,7 +225,6 @@ pathable==0.4.4
 pdfkit==1.0.0
 peft==0.18.0
 pexpect==4.9.0
-pillow==12.0.0
 platformdirs==4.3.8
 plotly==6.5.0
 pluggy==1.6.0
@@ -252,10 +246,6 @@ pybase64==1.4.2
 pyclipper==1.3.0.post6
 pycountry==24.6.1
 pycparser==2.23
-pydantic==2.12.4
-pydantic-core==2.41.5
-pydantic-extra-types==2.10.6
-pydantic-settings==2.10.1
 pydeck==0.9.1
 pydub==0.25.1
 pygments==2.19.2
@@ -276,7 +266,6 @@ pyzmq==27.1.0
 rapidfuzz==3.13.0
 ray==2.51.1
 readabilipy==0.3.0
-referencing==0.37.0
 regex==2025.11.3
 requests==2.32.5
 requests-toolbelt==1.0.0
@@ -336,7 +325,6 @@ trafilatura==2.0.0
 traitlets==5.14.3
 transformers==4.57.1
 triton==3.3.1
-typer==0.20.0
 typing-extensions==4.15.0
 typing-inspect==0.9.0
 typing-inspection==0.4.2

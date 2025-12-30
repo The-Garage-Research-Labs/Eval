@@ -40,6 +40,7 @@ class Experiment:
         flush_every: int = 5,
     ):
         self._config = config
+        self._backend = tracker_backend
         set_seed(self._config.seed)
         # filesystem paths
         self._output_dir = self._config.output_dir
@@ -330,3 +331,66 @@ class Experiment:
                     self.tracker.finish()
                 except Exception:
                     pass
+
+    # -------------------- Dataset Swapping --------------------
+    def swap_dataset(self, new_dataset_config, new_experiment_name, new_output_dir: Optional[str] = None) -> None:
+        """
+        Swaps the current dataset with a new one.
+        
+        Args:
+            new_dataset_config: The config object for the new dataset.
+            new_output_dir: (Optional) A new directory to save results. 
+                            If None, the current directory is wiped and reused.
+        """
+        print(f"[Experiment] Swapping dataset to: {new_dataset_config.dataset_name if hasattr(new_dataset_config, 'dataset_name') else 'New Dataset'}")
+
+        # 1. Update Configuration
+        self._config.dataset_config = new_dataset_config
+        
+        # 2. Update Output Directory (if provided)
+        if new_output_dir:
+            self._output_dir = new_output_dir
+            self._config.output_dir = new_output_dir
+            os.makedirs(self._output_dir, exist_ok=True)
+            
+            # Update file paths
+            self._results_file = os.path.join(self._output_dir, "results.json")
+            self._metric_dir = os.path.join(self._output_dir, "metric")
+            self._checkpoint_file = os.path.join(self._output_dir, "checkpoint.json")
+            self._predictions_file = os.path.join(self._output_dir, "predictions.ndjson")
+            
+            self._progress["predictions_file"] = self._predictions_file
+        else:
+            # If reusing the same dir, remove old files to prevent pollution
+            if os.path.exists(self._checkpoint_file):
+                os.remove(self._checkpoint_file)
+            if os.path.exists(self._predictions_file):
+                os.remove(self._predictions_file)
+
+        # 3. Instantiate New Dataset
+        self.data = new_dataset_config.create_dataset()
+        self.data.set_experiment(self)
+
+        # 4. Re-initialize Evaluator 
+        # (Evaluator often depends on specific metrics inside the dataset config)
+        self.evaluator = Evaluator(
+            evaluation_metrics=self._config.dataset_config.evaluation_metrics,
+            sample_eval_offload_every=1,
+            sample_eval_resume=False, # Reset resume logic for new dataset
+            sample_eval_offload_dir=self._metric_dir
+        )
+
+        self.tracker = get_tracker(
+            backend=self._backend,
+            experiment_name=new_experiment_name,
+            config=self._config.to_dict(),
+        )
+
+         # Reconnect references
+        self.evaluator.set_experiment(self)
+
+        # 5. Reset Progress State
+        self._progress["last_batch"] = -1
+        self._save_config() # Save the new config to disk
+        
+        print("[Experiment] Dataset swapped and state reset.")

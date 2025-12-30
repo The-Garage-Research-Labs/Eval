@@ -178,20 +178,20 @@ class VLLMClient(LLMClient):
             raise ValueError("model_name must be provided in the config for VLLMClient")
 
         # vLLM-specific engine arguments (e.g., for multi-GPU)
-        engine_args = config.get("engine_args", {})
+        self.engine_args = config.get("engine_args", {})
 
         # Check if pre-defined loras exist in config to auto-enable LoRA support
         self.lora_config = config.get("lora_modules", {}) # Format: {"name": "path/to/lora"}
         print("LoRA modules to load:", self.lora_config)
         if self.lora_config or config.get("enable_lora", False):
-            engine_args["enable_lora"] = True
+            self.engine_args["enable_lora"] = True
             # Optional: Tune these based on VRAM (defaults usually work)
             # engine_args["max_loras"] = 4 
             # engine_args["max_lora_rank"] = 64
-        print(f"Initializing vLLM model '{model_name}' with engine args: {engine_args}")
+        print(f"Initializing vLLM model '{model_name}' with engine args: {self.engine_args}")
         # Guard initialization with a global lock to avoid races
         with _vllm_init_lock:
-            self.llm = LLM(model=model_name, **engine_args)
+            self.llm = LLM(model=model_name,max_lora_rank=128, **self.engine_args)
 
         # 2. Initialize LoRA Registry
         # vLLM requires a unique integer ID for every loaded adapter.
@@ -239,27 +239,28 @@ class VLLMClient(LLMClient):
         
         return self.lora_requests[adapter_name]
 
-    def _format_prompt_with_thinking(self, prompt: str) -> str:
-        if self.enable_thinking:
+    def _format_prompt_with_thinking(self, prompt: str, thinking: bool) -> str:
+        if self.enable_thinking or thinking:
             return f"{prompt}<|im_end|>\n<|im_start|>assistant\n"
         else:
             return f"{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
     
     def _create_sampling_params(self, **kwargs) -> SamplingParams:
         return SamplingParams(
-            seed        = kwargs.get("seed", self.config.get("seed", None)),
+            # seed        = kwargs.get("seed", self.config.get("seed", None)),
             temperature = kwargs.get("temperature", self.temperature),
             top_p       = kwargs.get("top_p", self.top_p),
             max_tokens  = kwargs.get("max_tokens", self.max_tokens),
             stop        = kwargs.get("stop", self.stop_sequences),
+            truncate_prompt_tokens= self.engine_args.get("max_model_len",None),
         )
-    
-    def call_api(self, prompt: str, adapter_name: str = None, **kwargs) -> str:
+
+    def call_api(self, prompt: str, adapter_name: str = None, thinking=False, **kwargs) -> str:
         """
         :param adapter_name: The string name of the LoRA to use (must be loaded first).
         """
         sampling_params = self._create_sampling_params(**kwargs)
-        prompt = self._format_prompt_with_thinking(prompt)
+        prompt = self._format_prompt_with_thinking(prompt, thinking)
         
         # Retrieve the specific LoRA object
         lora_req = self._get_lora_request(adapter_name)
@@ -271,12 +272,14 @@ class VLLMClient(LLMClient):
                 sampling_params, 
                 lora_request=lora_req
             )
+        print(outputs[0].outputs[0].text)  # Debugging output
         return outputs[0].outputs[0].text
 
     def call_batch(
         self,
         prompts: Iterable[str],
         adapter_name: str = None,
+        thinking: bool = False,
         **call_api_kwargs,
     ) -> List[Optional[str]]:
         """
@@ -284,7 +287,7 @@ class VLLMClient(LLMClient):
         """
         prompts = list(prompts)
         sampling_params = self._create_sampling_params(**call_api_kwargs)
-        prompts = [self._format_prompt_with_thinking(p) for p in prompts]
+        prompts = [self._format_prompt_with_thinking(p, thinking) for p in prompts]
         
         # Retrieve the specific LoRA object
         lora_req = self._get_lora_request(adapter_name)

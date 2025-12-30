@@ -3,7 +3,7 @@ __pycache__
 *.ipynb
 data/
 *.html
-eval.egg-info/
+*.egg-info/
 ignore*
 wandb/
 mlruns/
@@ -13,4 +13,5 @@ output/
 test*
 *.png
 swde_*
-websrc_*
+websrc*
+archive/

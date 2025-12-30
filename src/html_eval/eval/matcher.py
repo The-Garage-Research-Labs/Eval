@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 import html
 import textwrap
+from collections import Counter
 from html_eval.util.eval_util import is_not_null
 from html_eval.util.html_util import normalize_text
 
@@ -115,21 +116,47 @@ class Matcher:
             return False
         else:
 
-            tmp_pred = pred_s
+            # tmp_pred = pred_s
+            
+            # candidates = sorted(candidates, key=lambda x: len(str(x)), reverse=True)
+
+            # for c in candidates:
+            #     if isinstance(pred, (int, float)) and isinstance(c, (int, float)):
+            #         if pred == c:
+            #             return True
+                
+            #     tmp_c = normalize_text(str(c))
+            #     if tmp_c in tmp_pred:
+            #         tmp_pred = tmp_pred.replace(tmp_c, '')
+            #         if not tmp_pred.strip():
+            #             return True
+                
+                
+            # return False
+
+                        # Convert the prediction string into a Counter of tokens
+            pred_counts = Counter(pred_s.split())
             
             candidates = sorted(candidates, key=lambda x: len(str(x)), reverse=True)
 
             for c in candidates:
+                # Keep original numeric check
                 if isinstance(pred, (int, float)) and isinstance(c, (int, float)):
                     if pred == c:
                         return True
                 
                 tmp_c = normalize_text(str(c))
-                if tmp_c in tmp_pred:
-                    tmp_pred = tmp_pred.replace(tmp_c, '')
-                    if not tmp_pred.strip():
-                        return True
+                c_counts = Counter(tmp_c.split())
                 
+                # Check if the candidate tokens are fully contained within the current prediction counts
+                # (pred_counts & c_counts) returns the intersection (min counts of common elements)
+                if (pred_counts & c_counts) == c_counts:
+                    # Subtract candidate tokens from the prediction counter
+                    pred_counts = pred_counts - c_counts
+                    
+                    # Check if pred_counts is empty (sum of all counts is 0)
+                    if sum(pred_counts.values()) == 0:
+                        return True
                 
             return False
 

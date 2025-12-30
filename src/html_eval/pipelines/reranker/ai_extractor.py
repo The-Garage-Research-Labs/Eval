@@ -8,7 +8,8 @@ from typing import Any, Dict, List, Optional, Iterable
 import torch
 from html_eval.core.experiment import Experiment
 from html_eval.configs.pipeline_config import RerankerExtractorConfig
-from html_eval.util.html_util import merge_html_chunks, extract_visible_xpaths_leaves, merge_xpaths_to_html, clean_html
+from html_eval.util.html_util import merge_html_chunks, extract_visible_xpaths_leaves, merge_xpaths_to_html, clean_html, SmartHTMLProcessor
+from html_eval.util.json_util import is_schema
 import ast
 import concurrent.futures
 import time
@@ -26,7 +27,9 @@ class AIExtractor:
         else:
             self.llm_pruner_client = self.config.llm_pruner_config.create_llm_client()
 
-        self.prompt_template = self.config.generation_prompt_template
+        self.schema_prompt_template = self.config.schema_generation_prompt_template
+        self.query_prompt_template = self.config.query_generation_prompt_template
+
         self.model_name: str = self.config.reranker_huggingface_model
         self.max_length = self.config.reranker_max_prompt_length
         self.default_top_k = self.config.reranker_default_top_k 
@@ -56,6 +59,8 @@ class AIExtractor:
         # load the reranker model/tokenizer into memory
         if not self.config.disable_reranker:
             self._load_reranker()
+
+        self.html_processor = SmartHTMLProcessor()
 
     def set_experiment(self, experiment: Experiment ):
         self.experiment = experiment
@@ -92,7 +97,7 @@ class AIExtractor:
         no_id = tok("no", add_special_tokens=False).input_ids[0]
 
         sampling = SamplingParams(
-            seed=self.experiment._config.seed,
+            # seed=self.experiment._config.seed,
             temperature=0,
             max_tokens=1,
             logprobs=20,
@@ -365,12 +370,16 @@ class AIExtractor:
             query = row['query']
             
             # Extract structure
-            chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
+            #### OLD
+            # chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
+            # xpath_pairs = chunk_xpaths
+            #### NEW
+            chunk_xpaths = self.html_processor.extract_chunks(chunk_content)
+            xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
             
             # Store it! Crucial for fixing the order bug.
             all_rows_xpaths.append(chunk_xpaths) 
-            
-            prompt = self._promp_gen(chunk_xpaths, query)
+            prompt = self._promp_gen(xpath_pairs, query)
             prompts.append(prompt)
         
         # 3. Batch Inference
@@ -387,7 +396,7 @@ class AIExtractor:
                 # Usually safer to return original list or empty list depending on logic.
                 final_pruned_contents.append(row_xpaths) 
                 continue
-
+            # print("res: ",response)
             match = re.search(r'\[(.*?)\]', response, re.DOTALL)
             chosen = []
             if match:
@@ -411,7 +420,7 @@ class AIExtractor:
             
             # Currently returning list of tuples as per your snippet
             final_pruned_contents.append(row_final_list)
-        print("final_content: ", final_pruned_contents)
+        # print("final_content: ", final_pruned_contents)
         # 5. Update the DataFrame
         # We replace the 'chunkcontent' (or create a new col) with the pruned version
         # Use pl.Series to maintain alignment with the filtered_batch
@@ -427,6 +436,7 @@ class AIExtractor:
         Group by doc_id, merge HTML chunks using BeautifulSoup, remove newline chars,
         build prompts, call LLM in batch, and attach responses.
         """
+        # print(batch)
         excluded = {"chunkcontent", "chunkid", "score", "score_norm", "doc_id"}
         # Collect other columns with first() and collect chunkcontent into a list
         agg_exprs = [
@@ -439,11 +449,27 @@ class AIExtractor:
         ]
         # Group and aggregate
         df_grouped = batch.group_by("doc_id", maintain_order=True).agg(agg_exprs)
-        
+
+        # STRUCT_DTYPE = pl.Struct([
+        #     pl.Field("id", pl.Int64),
+        #     pl.Field("xpath", pl.Utf8),
+        #     pl.Field("content", pl.Utf8),
+        #     pl.Field("type", pl.Utf8),
+        # ])
+
+        # df_grouped = df_grouped.with_columns(
+        #     pl.col("chunks")
+        #     .map_elements(lambda lol: [item for inner in (lol or []) for item in inner],return_dtype=pl.List(STRUCT_DTYPE))
+        #     .alias("chunks")
+        # )
+        # print("Grouped DF: ", df_grouped)
         # Merge chunks using your Python function per-row, then remove newlines
+        # NOTE: adding fallback
         df_grouped = df_grouped.with_columns(
-            pl.col("chunks")
-            .map_elements(lambda chunks: merge_html_chunks(chunks), return_dtype=pl.Utf8)
+            # pl.col("chunks")
+            pl.struct(["content", "chunks"])
+            .map_elements(lambda s: merge_html_chunks(s["chunks"], s["content"]), return_dtype=pl.Utf8)
+            # .map_elements(lambda s: self.html_processor.reconstruct_skeleton(s["content"], s["chunks"]), return_dtype=pl.Utf8)
             .alias("full_content")
         ).drop("chunks")
         
@@ -453,16 +479,32 @@ class AIExtractor:
         )
         
         # Build prompt column
+        # df_prompt = df_grouped.with_columns(
+        #     pl.struct(["query", "full_content"]).map_elements(
+        #         lambda s: self.schema_prompt_template.format(query=s["query"], content=s["full_content"]),
+        #         return_dtype=pl.Utf8
+        #     ).alias("prompt")
+        # )
+        # Build a prompt column based on the query type (schema vs non-schema)
+        def build_prompt(row):
+            query = row["query"]
+            content = row["full_content"]
+            if is_schema(query):
+                return self.schema_prompt_template.format(query=query, content=content)
+            else:
+                return self.query_prompt_template.format(query=query, content=content)
         df_prompt = df_grouped.with_columns(
             pl.struct(["query", "full_content"]).map_elements(
-                lambda s: self.prompt_template.format(query=s["query"], content=s["full_content"]),
+                build_prompt,
                 return_dtype=pl.Utf8
             ).alias("prompt")
         )
 
         # Call LLM and attach responses
         prompts = df_prompt["prompt"].to_list()
-        responses = self.llm_client.call_batch(prompts)
+        responses = self.llm_client.call_batch(prompts , adapter_name="extractor")
+        # responses = self.llm_client.call_batch(prompts , adapter_name="extractor", thinking=True)
+        
         df_response = df_prompt.with_columns(
             pl.Series("response", responses, dtype=pl.Utf8)
         )

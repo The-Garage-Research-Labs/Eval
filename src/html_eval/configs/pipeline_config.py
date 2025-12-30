@@ -66,7 +66,8 @@ class RerankerExtractorConfig:
     llm_config: LLMClientConfig
     llm_pruner_config: LLMClientConfig
     classification_prompt_template: str
-    generation_prompt_template: str
+    schema_generation_prompt_template: str
+    query_generation_prompt_template: str
     llm_pruner_prompt: str
 
     same_llm_config: bool = False

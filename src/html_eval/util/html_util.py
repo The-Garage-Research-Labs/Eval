@@ -9,14 +9,245 @@ import unicodedata
 from rapidfuzz import fuzz
 from lxml import etree, html
 import polars as pl
+import copy
 
-def merge_html_chunks(chunks: List[str]) -> str:
+class SmartHTMLProcessor:
+    def __init__(self):
+        self.ATOMIC_TAGS = {'table', 'ul', 'ol', 'dl', 'pre', 'code', 'figure'}
+        self.BLOCK_TAGS = {
+            'article', 'aside', 'blockquote', 'div', 'fieldset', 'figure', 
+            'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'header', 
+            'main', 'nav', 'noscript', 'p', 'section', 'li'
+        }
+        self.INLINE_TAGS = {'span', 'a', 'b', 'strong', 'i', 'em', 'u', 'sub', 'sup', 'br', 'img', 'q', 'small', 'big', 'cite', 'label'}
+        self.ALLOWED_ATTRS = {'href', 'src', 'alt', 'colspan', 'rowspan', 'title', 'target'}
+
+    def _normalize_whitespace(self, text, preserve_newlines=False):
+        if not text: return ""
+        if preserve_newlines: return text.strip()
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _clean_element(self, element, is_root=False):
+        etree.strip_elements(element, 'script', 'style', 'meta', 'noscript', 'link', 'svg', 'iframe')
+        etree.strip_tags(element, etree.Comment)
+        for node in element.iter():
+            keys = list(node.attrib.keys())
+            for key in keys:
+                if key not in self.ALLOWED_ATTRS:
+                    del node.attrib[key]
+                elif key == 'href' and node.attrib[key].strip().lower().startswith('javascript:'):
+                    del node.attrib[key]
+        if is_root: element.tail = None
+
+    def _element_to_string(self, element):
+        return html.tostring(element, encoding='unicode', pretty_print=False)
+
+    def _is_layout_table(self, element):
+        if element.tag != 'table': return False
+        if element.find('.//th') is not None: return False
+        if element.find('.//table') is not None: return True
+        if len(element.findall('.//tr')) < 2: return True
+        return False
+
+    def extract_chunks(self, html_content):
+        if not isinstance(html_content, str) or not html_content.strip(): return []
+        try:
+            root = html.fromstring(html_content)
+            tree = root.getroottree()
+        except: return []
+
+        chunks = []
+        buffer = []
+        counter = {'id': 0}
+
+        def flush_buffer(element_xpath):
+            if not buffer: return
+            raw = "".join(buffer)
+            clean = self._normalize_whitespace(raw)
+            if clean and (len(clean) > 1 or '<img' in raw):
+                chunks.append({
+                    'id': counter['id'],
+                    'xpath': element_xpath, 
+                    'content': clean,
+                    'type': 'text'
+                })
+                counter['id'] += 1
+            buffer.clear()
+
+        def traverse(element):
+            if element.text: buffer.append(element.text)
+
+            for child in element:
+                if not isinstance(child.tag, str): 
+                    if child.tail: buffer.append(child.tail)
+                    continue
+
+                tag = child.tag
+                is_atomic = tag in self.ATOMIC_TAGS
+                is_block = tag in self.BLOCK_TAGS
+                is_layout = is_atomic and self._is_layout_table(child)
+
+                if is_layout or (tag not in self.BLOCK_TAGS and tag not in self.ATOMIC_TAGS and tag not in self.INLINE_TAGS):
+                    flush_buffer(tree.getpath(element))
+                    traverse(child)
+                    if child.tail: buffer.append(child.tail)
+                    continue
+
+                if is_block or is_atomic:
+                    flush_buffer(tree.getpath(element))
+
+                    if is_atomic:
+                        child_copy = copy.deepcopy(child)
+                        self._clean_element(child_copy, is_root=True)
+                        clean_html = self._normalize_whitespace(self._element_to_string(child_copy), preserve_newlines=(tag=='pre'))
+                        
+                        chunks.append({
+                            'id': counter['id'],
+                            'xpath': tree.getpath(child),
+                            'content': clean_html,
+                            'type': 'atomic'
+                        })
+                        counter['id'] += 1
+                    else:
+                        has_block_children = any((c.tag in self.BLOCK_TAGS or c.tag in self.ATOMIC_TAGS) and not self._is_layout_table(c) for c in child)
+                        if has_block_children:
+                            traverse(child)
+                        else:
+                            child_copy = copy.deepcopy(child)
+                            self._clean_element(child_copy, is_root=True)
+                            if bool(child_copy.text_content().strip()) or child_copy.find('.//img') is not None:
+                                clean_html = self._normalize_whitespace(self._element_to_string(child_copy))
+                                chunks.append({
+                                    'id': counter['id'],
+                                    'xpath': tree.getpath(child),
+                                    'content': clean_html,
+                                    'type': 'text'
+                                })
+                                counter['id'] += 1
+                
+                elif tag == 'br':
+                    buffer.append(" ")
+                elif tag in self.INLINE_TAGS:
+                    child_copy = copy.deepcopy(child)
+                    self._clean_element(child_copy, is_root=True)
+                    buffer.append(self._element_to_string(child_copy))
+
+                if child.tail: buffer.append(child.tail)
+
+            flush_buffer(tree.getpath(element))
+
+        traverse(root)
+        return chunks
+
+    def reconstruct_skeleton(self, original_html, selected_chunks):
+        if not selected_chunks: return ""
+        merged_list = []
+        for chunk in selected_chunks:
+            # print("CURRENT CHUNK",chunk)
+            if len(chunk) == 0:
+                continue
+            for c in chunk:
+                # print("CURRENT C",c)
+                # if len(c) == 0:
+                #     continue
+                # if isinstance(c,pl.Series):
+                #     merged_list.append((c[0], c[1]))
+                # else:
+                #     merged_list.append((c['xpath'], c['content']))
+                merged_list.append(c)
+        selected_chunks = merged_list
+
+        original_html = clean_html(original_html)
+        print("Selected Chunks: ",selected_chunks)
+        print("HTML : ",original_html)
+        root = html.fromstring(original_html)
+        tree = root.getroottree()
+        
+        selected_xpaths = {c['xpath'] for c in selected_chunks}
+        
+        # Identify structural ancestors to keep
+        kept_nodes = set()
+        for chunk in selected_chunks:
+            nodes = tree.xpath(chunk['xpath'])
+            if not nodes: continue
+            node = nodes[0]
+            kept_nodes.add(node)
+            for ancestor in node.iterancestors():
+                kept_nodes.add(ancestor)
+                
+        def prune(element, parent_is_selected=False):
+            element_xpath = tree.getpath(element)
+            is_explicitly_selected = element_xpath in selected_xpaths
+            
+            # Keep text if selected OR if inline inside selected
+            should_keep_text = is_explicitly_selected or (parent_is_selected and element.tag in self.INLINE_TAGS)
+
+            # Wipe text if not kept
+            if not should_keep_text:
+                element.text = None
+
+            to_remove = []
+            
+            for child in element:
+                # 1. Structural Child (Block/Atomic)
+                if child in kept_nodes:
+                    # Recurse (Reset selection context unless child itself is selected)
+                    prune(child, parent_is_selected=False)
+                    
+                    if not should_keep_text:
+                        child.tail = None
+                    continue
+                
+                # 2. Inline Child (Content)
+                if should_keep_text and child.tag in self.INLINE_TAGS:
+                    # Pass context down!
+                    prune(child, parent_is_selected=True)
+                    continue
+                
+                to_remove.append(child)
+
+            for child in to_remove:
+                element.remove(child)
+
+        prune(root)
+        return html.tostring(root, encoding='unicode', pretty_print=True)
+
+# ==========================================
+# TEST RUN
+# ==========================================
+# if __name__ == "__main__":
+#     processor = SmartHTMLProcessor()
+    
+#     html_doc = """
+#     <div>
+#     yesssss
+#     <p>Price: <p>ds</p> <span> 200 </span></p>
+#     noooo
+#     <span>$19.99</span>
+#     </div>
+#     """
+    
+#     print("--- ORIGINAL HTML ---")
+#     print(html_doc.strip())
+    
+#     chunks = processor.extract_chunks(html_doc)
+    
+#     print("\n--- EXTRACTED CHUNKS ---")
+#     for c in chunks:
+#         print(f"ID {c['id']} | XPath: {c['xpath']} | {c['content']}")
+
+#     skeleton = processor.reconstruct_skeleton(html_doc, chunks)
+
+#     print("\n--- RECONSTRUCTED SKELETON ---")
+#     print(skeleton)
+
+def merge_html_chunks(chunks: List[str], fallback_content: str) -> str:
         """
         Merge a list of HTML chunk strings into a single HTML document.
         If a chunk has no <body>, append its top-level nodes anyway.
         Returns prettified HTML (we later strip newlines).
         """
-        
+
         # print("chunks to merge:")
         # print(chunks)
         # print(isinstance(chunks[0],list))
@@ -35,6 +266,11 @@ def merge_html_chunks(chunks: List[str]) -> str:
                         merged_list.append((c[0], c[1]))
                     else:
                         merged_list.append((c['xpath'], c['content']))
+                    
+            if len(merged_list) == 0:
+                print("FALLBACK USED")
+                final_content = clean_html(fallback_content)
+                return final_content
             # print("MERGINGGG")
             # print(merged_list)
             final_html = merge_xpaths_to_html(merged_list)
@@ -47,7 +283,7 @@ def merge_html_chunks(chunks: List[str]) -> str:
                     continue
                 final_html += f"\nchunk number {i}"
                 final_html += ch
-                
+        
         return final_html
 
 def normalize_html_text(text: str) -> str:
@@ -186,8 +422,8 @@ def custom_clean_html(html_content: str) -> str:
     
     # Remove unwanted tags in one pass
     unwanted_tags = [
-        "script", "style", "noscript", "template", "iframe", 
-        "object", "embed", "canvas", "svg", "link", "meta", "title", "head"
+        "script", "style", "noscript", "iframe", 
+        "object", "embed", "canvas", "svg",
     ]
     _remove_nodes_by_tag(doc, unwanted_tags)
     
@@ -220,10 +456,6 @@ def custom_clean_html(html_content: str) -> str:
             to_remove.append(el)
             continue
         
-        # Check for common hidden classes
-        class_attr = el.get('class', '')
-        if class_attr and ('hidden' in class_attr.lower() or 'invisible' in class_attr.lower()):
-            to_remove.append(el)
     
     # Remove hidden elements
     for el in to_remove:
@@ -362,6 +594,7 @@ def find_closest_html_node(html_text, search_text):
         'score': best_containing_score,
         'found': True
     }
+
 
 
 def get_text_chunks(element):

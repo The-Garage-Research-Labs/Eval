@@ -16,9 +16,11 @@ def is_not_null(x: Any) -> bool:
     """Robustly detect non-null value (supports pandas/polars/list/scalars)."""
     if x is None:
         return False
+    if isinstance(x, list) and len(x) == 1:
+        x = x[0]
     # string
     if isinstance(x, str):
-        if x == "<NULL>" or x.strip() == "":
+        if x == "<NULL>" or squad_normalize_answer(x).strip() == "":
             return False
     # pandas
     if isinstance(x, pd.Series):

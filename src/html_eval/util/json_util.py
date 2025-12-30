@@ -30,6 +30,7 @@ def extract_and_repair_json(response: Union[str,dict] , spread_values: False) ->
     Worker function for processing a single LLM response.
     Returns a dict (empty dict on error). Top-level function for pickling.
     """
+
     if response is None:
         return {}
     
@@ -71,4 +72,4 @@ def extract_and_repair_json(response: Union[str,dict] , spread_values: False) ->
         
         return parsed
     except Exception:
-        return {}
+        return response

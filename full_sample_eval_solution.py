@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 # move to the directory where src is located
-os.chdir('/home/abdo/PAPER/Eval/src')
+# os.chdir('/home/abdo/PAPER/Eval/src')
 
 # Setting an API key for NVIDIA 
 os.environ['NVIDIA_API_KEY'] = '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'
@@ -27,7 +27,7 @@ import multiprocessing as mp
 ######################################## CONSTANTS
 # EXPERIMENT_NAME = "pruner_best_model"
 # EXPERIMENT_NAME = "pruner_trying"
-EXPERIMENT_NAME = "pruner_abalationv2_final"
+EXPERIMENT_NAME = "test"
 
 SWDE_DOMAINS = {
     "auto": 17923,
@@ -39,10 +39,10 @@ SWDE_DOMAINS = {
     "movie": 20000,
     "restaurant": 20000
 }
-SWDE_SAMPLES = 500
+SWDE_SAMPLES = 20
 WEBSRC_TOTAL = 50000
-WEBSRC_SAMPLES = 5000
-BATCH_SIZE = 100
+WEBSRC_SAMPLES = 100
+BATCH_SIZE = 10
 SEED = 42
 USE_PRUNER = True  
 ########################################## CONFIG
@@ -101,7 +101,9 @@ llm_client_config = LLMClientConfig(
         lora_modules={
             # "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_r64_n",
             "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL",
-            "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
+            # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
+            "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA"
+
         },
 ) 
 
@@ -151,22 +153,12 @@ reranker_extractor_config = RerankerExtractorConfig(
     4. Provide concise answers without additional commentary.
     5. If the query is boolean, respond with yes or no.
     6. Choose the most relevant information if multiple answers exist.
-    7. THE ANSWER IS PRETTY SIMPLE JUST OUTPUT IT.
-
+    
     OUTPUT FORMAT:
     REASONING: "The reasoning behind the answer"
     {{"answer": "The extracted text or synthesized answer"}}
     
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-    OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
-
-""",
+                """,
     schema_generation_prompt_template="""
     You are an expert Data Extraction and ETL agent. Your task is to parse the provided HTML content and extract specific data points to populate a target JSON schema.
     

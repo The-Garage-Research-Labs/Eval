@@ -298,4 +298,4 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["eval*"]
+include = ["html_eval*"]

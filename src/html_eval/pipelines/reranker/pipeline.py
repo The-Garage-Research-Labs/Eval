@@ -4,6 +4,7 @@ from html_eval.pipelines.reranker.ai_extractor import AIExtractor
 from html_eval.pipelines.reranker.postprocessor import PostProcessor
 from html_eval.configs.pipeline_config import RerankerPipelineConfig
 from html_eval.core.types import Sample, SamplePrediction
+import os
 from typing import List
 
 class RerankerPipeline(BasePipeline):
@@ -36,7 +37,11 @@ class RerankerPipeline(BasePipeline):
         # print('='*80)
         
         # Post-process the extracted data
-        postprocessed_data = self.postprocessor.process_dataframe(extracted_data)
+        postprocessed_data = self.postprocessor.process_dataframe(
+            extracted_data, 
+            use_process=True,  # <--- CRITICAL
+            n_workers=os.cpu_count() # Use all cores
+        )
         # print(f"Postprocessed Data: {postprocessed_data}")
         # print(f"Postprocessed Data Type: {type(postprocessed_data)}")
         # print('='*80)

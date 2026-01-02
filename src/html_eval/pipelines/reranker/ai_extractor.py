@@ -1,10 +1,8 @@
-
 import polars as pl
 import os
 import math
 import threading
-from typing import Any, Dict, List, Optional, Iterable
-
+from typing import Any, Dict, List, Optional, Iterable, Tuple, Union
 import torch
 from html_eval.core.experiment import Experiment
 from html_eval.configs.pipeline_config import RerankerExtractorConfig
@@ -14,11 +12,142 @@ import ast
 import concurrent.futures
 import time
 import re
+from concurrent.futures import ProcessPoolExecutor
+
+# ==============================================================================
+# 1. STANDALONE HELPER FUNCTIONS (Moved out of class to allow Pickling)
+# ==============================================================================
+
+def _longest_common_xpath_prefix(xpaths: Iterable[str]) -> str:
+    """Compute longest common xpath prefix."""
+    parts_list = []
+    for xp in xpaths:
+        if not xp: continue
+        s = xp if xp.startswith("/") else "/" + xp
+        parts_list.append(s.split("/"))
+
+    if not parts_list: return "/"
+
+    common = []
+    for segs in zip(*parts_list):
+        if all(seg == segs[0] for seg in segs):
+            common.append(segs[0])
+        else:
+            break
+
+    if not common or (len(common) == 1 and common[0] == ""):
+        return "/"
+    prefix = "/".join(common)
+    if not prefix.startswith("/"):
+        prefix = "/" + prefix
+    return prefix
+
+def _escape_single_quotes(s: str) -> str:
+    if s is None: return ""
+    return s.replace("'", "\\'")
+
+def _remove_prefix_from_xpath(xpath: str, prefix: str) -> str:
+    if xpath is None or xpath == "": return "/"
+    if not xpath.startswith("/"): xpath = "/" + xpath
+    if prefix == "/": return xpath
+    if xpath == prefix: return "/"
+    if xpath.startswith(prefix):
+        rel = xpath[len(prefix):]
+        if rel == "" or not rel.startswith("/"):
+            rel = "/" + rel.lstrip("/")
+        return rel
+    return xpath
+
+def generate_pruner_prompt(xpath_content_pair_ls: List, query: str, prompt_template: str) -> str:
+    """
+    Standalone version of _promp_gen. 
+    Accepts prompt_template string directly instead of config object.
+    """
+    normalized = []
+    for pair in xpath_content_pair_ls:
+        if pair is None:
+            normalized.append(("", ""))
+            continue
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+            xpath, text = pair[0] or "", pair[1] or ""
+        elif isinstance(pair, dict):
+            xpath = pair.get("xpath", "") or pair.get("0", "") or ""
+            text = pair.get("content", "") or pair.get("1", "") or ""
+        else:
+            try:
+                xpath = str(pair[0]) if getattr(pair, "__len__", None) and len(pair) >= 1 else ""
+                text = str(pair[1]) if getattr(pair, "__len__", None) and len(pair) >= 2 else ""
+            except Exception:
+                xpath, text = "", str(pair)
+        normalized.append((xpath, text))
+
+    xpaths_for_prefix = [xp for xp, _ in normalized if xp]
+    prefix = _longest_common_xpath_prefix(xpaths_for_prefix)
+
+    lines = []
+    lines.append(f"The entire chunk is under: '{_escape_single_quotes(prefix)}'")
+
+    for idx, (xp, txt) in enumerate(normalized):
+        rel = _remove_prefix_from_xpath(xp, prefix)
+        rel_escaped = _escape_single_quotes(rel)
+        txt_escaped = _escape_single_quotes(txt)
+        if not rel_escaped.startswith("/"):
+            rel_escaped = "/" + rel_escaped
+        lines.append(f"{idx} ('{rel_escaped}', '{txt_escaped}')")
+
+    full_content = "\n".join(lines)
+    prompt = prompt_template.format(query=query, content=full_content)
+    return prompt
+
+# ==============================================================================
+# 2. WORKER FUNCTIONS (Must be top-level for Multiprocessing)
+# ==============================================================================
+
+def _worker_filter_prep(args):
+    """
+    Worker for _filter.
+    Receives: (chunk_content, query, template_string)
+    Returns: (chunk_xpaths_object, prompt_string)
+    """
+    row_content, row_query, prompt_template = args
+    
+    # 1. Instantiate Processor inside the worker (avoid pickling the object)
+    processor = SmartHTMLProcessor() 
+    
+    # 2. Heavy CPU: Parse HTML
+    chunk_xpaths = processor.extract_chunks(row_content)
+    
+    # 3. Prepare data for prompt generation
+    xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
+    
+    # 4. Generate Prompt using STANDALONE function
+    prompt = generate_pruner_prompt(xpath_pairs, row_query, prompt_template)
+    
+    return chunk_xpaths, prompt
+
+def _worker_merge_html(args):
+    """
+    Worker for _generate_output.
+    Receives: (chunks_list, content_fallback)
+    Returns: string
+    """
+    chunks, content = args
+    # Import locally to be safe, though util imports are usually fine
+    from html_eval.util.html_util import merge_html_chunks
+    
+    # Heavy CPU: Merge and clean HTML
+    merged = merge_html_chunks(chunks, content)
+    
+    # Optimization: remove newlines here in the worker
+    return merged.replace("\n", "")
+
+# ==============================================================================
+# 3. CLASS DEFINITION
+# ==============================================================================
 
 class AIExtractor:
 
     def __init__(self, config: RerankerExtractorConfig):
-        
         self.config = config
 
         self.llm_client = self.config.llm_config.create_llm_client()
@@ -45,9 +174,6 @@ class AIExtractor:
         self.classification_prompt_template = self.config.classification_prompt_template
         self.reranker_classification_threshold = self.config.reranker_classification_threshold
 
-
-
-        # placeholders to be set by _load_reranker
         self.tok = None
         self.llm = None
         self.suffix_ids = None
@@ -56,7 +182,6 @@ class AIExtractor:
         self.sampling = None
         self.llm_lock = threading.Lock()
 
-        # load the reranker model/tokenizer into memory
         if not self.config.disable_reranker:
             self._load_reranker()
 
@@ -65,46 +190,24 @@ class AIExtractor:
     def set_experiment(self, experiment: Experiment ):
         self.experiment = experiment
         
-
     def _load_reranker(self):
-        """
-        Load tokenizer, vLLM LLM and sampling params into this instance.
-        """
-        # ensure environment flags similar to your script
+        # ... (Same as before) ...
         os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
         os.environ.setdefault("VLLM_USE_V1", "1")
-
-        # local imports (fail early if not installed)
         from transformers import AutoTokenizer
         from vllm import LLM, SamplingParams
-
         MODEL_NAME = self.model_name
-
-        # Tokenizer
         tok = AutoTokenizer.from_pretrained(MODEL_NAME)
         tok.padding_side = "left"
         tok.pad_token = tok.eos_token
-
-        # LLM
-        # pass through any kwargs set in self.vllm_kwargs
         llm = LLM(model=MODEL_NAME, **self.vllm_kwargs)
-
-        # Suffix and yes/no token ids (keeps same behavior as your file)
         suffix = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
         suffix_ids = tok.encode(suffix, add_special_tokens=False)
-
         yes_id = tok("yes", add_special_tokens=False).input_ids[0]
         no_id = tok("no", add_special_tokens=False).input_ids[0]
-
         sampling = SamplingParams(
-            # seed=self.experiment._config.seed,
-            temperature=0,
-            max_tokens=1,
-            logprobs=20,
-            allowed_token_ids=[yes_id, no_id],
+            temperature=0, max_tokens=1, logprobs=20, allowed_token_ids=[yes_id, no_id],
         )
-
-        # assign to instance
         self.tok = tok
         self.llm = llm
         self.suffix_ids = suffix_ids
@@ -114,289 +217,91 @@ class AIExtractor:
         self.llm_lock = threading.Lock()
 
     def _format_templates(self, query: str, passages: List[str]) -> List[List[Dict[str, str]]]:
-        """
-        Build the chat-style templates for each passage (list-of-templates).
-        Returns list of templates matching the vLLM chat API shape used in your server.
-        """
         INST = self.classification_prompt_template
-
         def _format(q: str, d: str):
             return [
                 {"role": "system", "content": 'Judge whether the Document meets the requirements based on the Query and the Instruct provided. Answer only "yes" or "no".'},
                 {"role": "user",   "content": f"<Instruct>: {INST}\n\n<Query>: {q}\n\n<Document>: {d}"},
             ]
-
         templates = [_format(query, p) for p in passages]
         return templates
 
     def _classify(self, processed_batch: List) -> List[float]:
+        # ... (Same as before) ...
         if self.config.disable_reranker:
             return [1.0] * len(processed_batch)
-        
         if not processed_batch:
             return []
-
-        # ensure model loaded
         if self.llm is None or self.tok is None:
             raise RuntimeError("Reranker model/tokenizer not loaded")
 
-        # Tokenize using tokenizer's chat helper
-        # apply_chat_template returns token ids lists when tokenize=True
         tokenized = self.tok.apply_chat_template(processed_batch, tokenize=True, add_generation_prompt=False, enable_thinking=False)
-        # cap + append suffix ids
         tokenized = [ids[: self.max_length] + self.suffix_ids for ids in tokenized]
-
-        # Prepare TokensPrompt objects
         from vllm.inputs.data import TokensPrompt
         msgs = [TokensPrompt(prompt_token_ids=ids) for ids in tokenized]
 
-        # Call llm.generate (serialize with lock to be safe)
         def _call_generate():
             with self.llm_lock:
                 return self.llm.generate(msgs, self.sampling, use_tqdm=False)
-
         outs = _call_generate()
-
-        # Compute probabilities (softmax over yes/no logits) per passage
         scores: List[float] = []
         for o in outs:
-            # defensive access to last token logprobs
             lp = o.outputs[0].logprobs[-1]
             true_logits = lp.get(self.yes_id, type("L", (), {"logprob": -10})).logprob
             false_logits = lp.get(self.no_id,  type("L", (), {"logprob": -10})).logprob
-
-            # convert to probabilities (numerical stable enough for just two tokens)
             y = math.exp(true_logits)
             n = math.exp(false_logits)
             prob_yes = y / (y + n) if (y + n) != 0 else 0.0
             scores.append(prob_yes)
-        
         return scores
-    
 
-
-    def _longest_common_xpath_prefix(self, xpaths: Iterable[str]) -> str:
-        """
-        Compute the longest common xpath prefix across the provided xpaths.
-        We treat '/' as separator and only cut at path boundaries (i.e., between steps).
-        Returns '/' when there is no non-empty common prefix.
-        """
-        # keep only non-empty strings
-        parts_list = []
-        for xp in xpaths:
-            if not xp:
-                continue
-            # normalize: ensure starts with '/'
-            s = xp if xp.startswith("/") else "/" + xp
-            # split keeps leading '' for the initial slash; that's fine
-            parts_list.append(s.split("/"))
-
-        if not parts_list:
-            return "/"
-
-        # find common prefix of lists of path segments
-        common = []
-        for segs in zip(*parts_list):
-            # segs contains the next segment from each path
-            if all(seg == segs[0] for seg in segs):
-                common.append(segs[0])
-            else:
-                break
-
-        # join back; if common is only [''] (only leading slash) -> return '/'
-        if not common or (len(common) == 1 and common[0] == ""):
-            return "/"
-        prefix = "/".join(common)
-        # ensure it begins with '/'
-        if not prefix.startswith("/"):
-            prefix = "/" + prefix
-        return prefix
-
-
-    def _escape_single_quotes(self, s: str) -> str:
-        """Escape single quotes for insertion inside single-quoted string in the prompt."""
-        if s is None:
-            return ""
-        return s.replace("'", "\\'")
-
-
-    def _remove_prefix_from_xpath(self, xpath: str, prefix: str) -> str:
-        """
-        Remove prefix from xpath following rules:
-        - If xpath == prefix -> return '/'
-        - If xpath startswith prefix -> remove prefix and ensure resulting path starts with '/'
-        - Otherwise return xpath unchanged (but ensure it starts with '/')
-        """
-        if xpath is None or xpath == "":
-            return "/"
-        if not xpath.startswith("/"):
-            xpath = "/" + xpath
-        if prefix == "/":
-            # nothing to remove
-            return xpath
-        if xpath == prefix:
-            return "/"
-        if xpath.startswith(prefix):
-            rel = xpath[len(prefix):]
-            # if removal yields empty or not starting with '/', ensure leading slash
-            if rel == "" or not rel.startswith("/"):
-                rel = "/" + rel.lstrip("/")
-            return rel
-        # doesn't start with prefix: return as-is (ensure leading slash)
-        return xpath
-
-
-    def _promp_gen(self, xpath_content_pair_ls: List, query: str) -> str:
-        """
-        Build the prompt string for the LLM pruner.
-
-        - xpath_content_pair_ls is expected to be an iterable of pairs/tuples like:
-            (xpath, content_text)
-        but this function tolerates several shapes (tuples, lists, dicts with keys 'xpath'/'content').
-        - query is inserted into the template at {query} and content at {content}.
-        """
-        # Normalize input into list of (xpath, text) tuples while preserving original index order
-        normalized = []
-        for pair in xpath_content_pair_ls:
-            if pair is None:
-                normalized.append(("", ""))
-                continue
-            # tuple/list-like: (xpath, text)
-            if isinstance(pair, (list, tuple)) and len(pair) >= 2:
-                xpath, text = pair[0] or "", pair[1] or ""
-            elif isinstance(pair, dict):
-                xpath = pair.get("xpath", "") or pair.get("0", "") or ""
-                text = pair.get("content", "") or pair.get("1", "") or ""
-            else:
-                # fallback: try to coerce to str
-                try:
-                    # if pair is something like a Series
-                    xpath = str(pair[0]) if getattr(pair, "__len__", None) and len(pair) >= 1 else ""
-                    text = str(pair[1]) if getattr(pair, "__len__", None) and len(pair) >= 2 else ""
-                except Exception:
-                    xpath, text = "", str(pair)
-            normalized.append((xpath, text))
-
-        # collect xpaths for prefix computation
-        xpaths_for_prefix = [xp for xp, _ in normalized if xp]
-        prefix = self._longest_common_xpath_prefix(xpaths_for_prefix)
-
-        # Build the content block lines with prefix removed and single quotes escaped
-        lines = []
-        # top line
-        lines.append(f"The entire chunk is under: '{self._escape_single_quotes(prefix)}'")
-
-        for idx, (xp, txt) in enumerate(normalized):
-            rel = self._remove_prefix_from_xpath(xp, prefix)
-            # ensure strings and escape single quotes
-            rel_escaped = self._escape_single_quotes(rel)
-            txt_escaped = self._escape_single_quotes(txt)
-            # ensure the relative xpath string begins with a slash (or is '/')
-            if not rel_escaped.startswith("/"):
-                rel_escaped = "/" + rel_escaped
-            lines.append(f"{idx} ('{rel_escaped}', '{txt_escaped}')")
-
-        full_content = "\n".join(lines)
-        # Insert into your configured template (keeps original behaviour)
-        prompt = self.config.llm_pruner_prompt.format(query=query, content=full_content)
-        return prompt
-
-    
-    # def _llm_filter(self, chunk_content: str, query: str ) -> str:
-    #     chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
-    #     prompt = self._promp_gen(chunk_xpaths, query)
-    #     response = self.llm_pruner_client.call_api(prompt)
-    #     # for i , x in chunk_xpaths:
-    #     #     print(f"{i} : {x}")
-
-    #     # print("-"*80)
-    #     # print("prompt: ", prompt)
-    #     # print("response: ", response)
-    #     # print("-"*80)
-
-    #     match = re.search(r'\[(.*?)\]', response, re.DOTALL)
-    #     if match:
-    #         inside = "[" + match.group(1).strip() + "]"  # rebuild valid list string
-    #         try:
-    #             chosen = ast.literal_eval(inside)
-    #         except Exception as e:
-    #             print("Error evaluating list:", e)
-    #             chosen = []
-    #     else:
-    #         chosen = []
-
-    #     final_list = []
-    #     for idx in chosen:
-    #         if 0 <= idx < len(chunk_xpaths):
-    #             final_list.append(chunk_xpaths[idx])
-    #     # print("THIS IS THE FINAL LIST: ", final_list )
-    #     # final_content = merge_xpaths_to_html(final_list)
-    #     # final_content = clean_html(final_content)
-    #     final_content = final_list
-    #     # print("final_content: ", final_content)
-    #     return final_content
-
-
-
-
+    # ---------------------------------------------------------
+    # OPTIMIZED _filter
+    # ---------------------------------------------------------
     def _filter(self, batch: pl.DataFrame, threshold: float = 0.5) -> pl.DataFrame:
-        """
-        Filter the batch based on a threshold and LLM pruning.
-        FIXED: Preserves context order by storing xpaths for every row.
-        """
         if 'score_norm' not in batch.columns:
             raise ValueError("Batch must contain 'score_norm' column for filtering.")
 
-        # 1. Basic numeric filter
         filtered_batch = batch.filter(pl.col('score_norm') >= threshold)
 
         if filtered_batch.height == 0:
             return filtered_batch
-
+        
         if not self.config.use_llm_pruner:
             return filtered_batch
-        
-        max_workers = getattr(self.config, "llm_pruner_workers", None) or min(32, (os.cpu_count() or 1) * 5)
 
-        rows: List[Dict[str, Any]] = filtered_batch.select(["chunkcontent", "query"]).to_dicts()
+        # 1. Prepare Data for Parallel Processing
+        # Extract rows as tuples: (chunkcontent, query)
+        rows_data = filtered_batch.select(["chunkcontent", "query"]).rows()
         
-        prompts = []
-        # NEW: We must save the specific xpaths for each row to use during extraction later
-        all_rows_xpaths = [] 
+        # Prepare arguments: (content, query, template_string)
+        # Note: We pass the template STRING, not self or config.
+        template_str = self.config.llm_pruner_prompt
+        worker_args = [(r[0], r[1], template_str) for r in rows_data]
 
-        # 2. Prepare Prompts and Context
-        for row in rows:
-            chunk_content = row['chunkcontent']
-            query = row['query']
-            
-            # Extract structure
-            #### OLD
-            # chunk_xpaths = extract_visible_xpaths_leaves(chunk_content)
-            # xpath_pairs = chunk_xpaths
-            #### NEW
-            chunk_xpaths = self.html_processor.extract_chunks(chunk_content)
-            xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
-            
-            # Store it! Crucial for fixing the order bug.
-            all_rows_xpaths.append(chunk_xpaths) 
-            prompt = self._promp_gen(xpath_pairs, query)
-            prompts.append(prompt)
+        max_workers = getattr(self.config, "llm_pruner_workers", None) or min(32, (os.cpu_count() or 1) * 4)
+
+        # 2. Parallel CPU Execution (HTML Parsing + Prompt Gen)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Map returns an iterator, list() consumes it
+            results = list(executor.map(_worker_filter_prep, worker_args))
+
+        # Unpack results: results is list of (chunk_xpaths, prompt)
+        all_rows_xpaths, prompts = zip(*results)
+        all_rows_xpaths = list(all_rows_xpaths)
+        prompts = list(prompts)
         
-        # 3. Batch Inference
-        # Your LLMClient correctly preserves list index order, so prompts[0] matches llm_results[0]
-        llm_results = self.llm_pruner_client.call_batch(prompts, max_workers=max_workers,  adapter_name="pruner")
+        # 3. Batch GPU Inference (Fast)
+        llm_results = self.llm_pruner_client.call_batch(prompts, max_workers=max_workers, adapter_name="pruner")
         
-        # 4. Extract Results mapping strictly to the correct row
+        # 4. Process Results (Light CPU work)
         final_pruned_contents = []
 
-        # zip ensures we match the Response with the specific XPaths from that specific row
         for response, row_xpaths in zip(llm_results, all_rows_xpaths):
             if not response: 
-                # Handle failed LLM call: return original or empty? 
-                # Usually safer to return original list or empty list depending on logic.
                 final_pruned_contents.append(row_xpaths) 
                 continue
-            # print("res: ",response)
+            
             match = re.search(r'\[(.*?)\]', response, re.DOTALL)
             chosen = []
             if match:
@@ -404,88 +309,55 @@ class AIExtractor:
                 try:
                     chosen = ast.literal_eval(inside)
                 except Exception as e:
-                    print("Error evaluating list:", e)
                     chosen = []
             
-            # Filter the specific xpaths for THIS row based on indices
             row_final_list = []
             for idx in chosen:
-                # Ensure index is valid for THIS specific row's content
                 if isinstance(idx, int) and 0 <= idx < len(row_xpaths):
                     row_final_list.append(row_xpaths[idx])
             
-            # If you want to merge back to HTML, uncomment:
-            # final_content = merge_xpaths_to_html(row_final_list)
-            # final_content = clean_html(final_content)
-            
-            # Currently returning list of tuples as per your snippet
             final_pruned_contents.append(row_final_list)
-        # print("final_content: ", final_pruned_contents)
-        # 5. Update the DataFrame
-        # We replace the 'chunkcontent' (or create a new col) with the pruned version
-        # Use pl.Series to maintain alignment with the filtered_batch
+
         return filtered_batch.with_columns(
             pl.Series(name="chunkcontent", values=final_pruned_contents)
         )
 
-
-
-
+    # ---------------------------------------------------------
+    # OPTIMIZED _generate_output
+    # ---------------------------------------------------------
     def _generate_output(self, batch: pl.DataFrame) -> pl.DataFrame:
-        """
-        Group by doc_id, merge HTML chunks using BeautifulSoup, remove newline chars,
-        build prompts, call LLM in batch, and attach responses.
-        """
-        # print(batch)
+        
         excluded = {"chunkcontent", "chunkid", "score", "score_norm", "doc_id"}
-        # Collect other columns with first() and collect chunkcontent into a list
+        
+        # Aggregation Logic
         agg_exprs = [
-            pl.col(col).first()
-            for col in batch.columns
-            if col not in excluded
+            pl.col(col).first() for col in batch.columns if col not in excluded
         ] + [
-            # Correct: just reference the column - it automatically aggregates into a list
             pl.col("chunkcontent").alias("chunks")
         ]
-        # Group and aggregate
         df_grouped = batch.group_by("doc_id", maintain_order=True).agg(agg_exprs)
 
-        # STRUCT_DTYPE = pl.Struct([
-        #     pl.Field("id", pl.Int64),
-        #     pl.Field("xpath", pl.Utf8),
-        #     pl.Field("content", pl.Utf8),
-        #     pl.Field("type", pl.Utf8),
-        # ])
+        # 1. Prepare Data for Parallel Processing
+        # Get columns as Python lists
+        chunks_list = df_grouped["chunks"].to_list()
+        content_list = df_grouped["content"].to_list()
+        
+        # Zip them for the worker
+        worker_args = zip(chunks_list, content_list)
 
-        # df_grouped = df_grouped.with_columns(
-        #     pl.col("chunks")
-        #     .map_elements(lambda lol: [item for inner in (lol or []) for item in inner],return_dtype=pl.List(STRUCT_DTYPE))
-        #     .alias("chunks")
-        # )
-        # print("Grouped DF: ", df_grouped)
-        # Merge chunks using your Python function per-row, then remove newlines
-        # NOTE: adding fallback
+        # 2. Parallel CPU Execution (Merge HTML)
+        max_workers = min(32, (os.cpu_count() or 1) * 2)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            full_contents = list(executor.map(_worker_merge_html, worker_args))
+
+        # 3. Assign back to Polars (Avoids map_elements)
         df_grouped = df_grouped.with_columns(
-            # pl.col("chunks")
-            pl.struct(["content", "chunks"])
-            .map_elements(lambda s: merge_html_chunks(s["chunks"], s["content"]), return_dtype=pl.Utf8)
-            # .map_elements(lambda s: self.html_processor.reconstruct_skeleton(s["content"], s["chunks"]), return_dtype=pl.Utf8)
-            .alias("full_content")
+            pl.Series("full_content", full_contents, dtype=pl.Utf8)
         ).drop("chunks")
         
-        # Remove newline characters
-        df_grouped = df_grouped.with_columns(
-            pl.col("full_content").str.replace_all("\n", "").alias("full_content")
-        )
+        # (Newlines already removed in worker)
         
-        # Build prompt column
-        # df_prompt = df_grouped.with_columns(
-        #     pl.struct(["query", "full_content"]).map_elements(
-        #         lambda s: self.schema_prompt_template.format(query=s["query"], content=s["full_content"]),
-        #         return_dtype=pl.Utf8
-        #     ).alias("prompt")
-        # )
-        # Build a prompt column based on the query type (schema vs non-schema)
+        # 4. Prompt Generation (Fast enough in Polars usually, or could be parallelized similarly)
         def build_prompt(row):
             query = row["query"]
             content = row["full_content"]
@@ -493,6 +365,7 @@ class AIExtractor:
                 return self.schema_prompt_template.format(query=query, content=content)
             else:
                 return self.query_prompt_template.format(query=query, content=content)
+        
         df_prompt = df_grouped.with_columns(
             pl.struct(["query", "full_content"]).map_elements(
                 build_prompt,
@@ -500,65 +373,83 @@ class AIExtractor:
             ).alias("prompt")
         )
 
-        # Call LLM and attach responses
-        prompts = df_prompt["prompt"].to_list()
-        responses = self.llm_client.call_batch(prompts , adapter_name="extractor")
-        # responses = self.llm_client.call_batch(prompts , adapter_name="extractor", thinking=True)
+        # =========================================================
+        # SPLIT BATCH LOGIC (QA vs SCHEMA)
+        # =========================================================
         
+        prompts = df_prompt["prompt"].to_list()
+        queries = df_prompt["query"].to_list()
+        
+        # Storage for split batches
+        qa_indices = []
+        qa_prompts = []
+        
+        schema_indices = []
+        schema_prompts = []
+
+        # 1. Split based on Query Type
+        for idx, (q, p) in enumerate(zip(queries, prompts)):
+            if is_schema(q):
+                schema_indices.append(idx)
+                schema_prompts.append(p)
+            else:
+                qa_indices.append(idx)
+                qa_prompts.append(p)
+
+        # Holder for final results in original order
+        final_responses = [None] * len(prompts)
+
+        # 2. Run QA Batch (Adapter: "qa")
+        if qa_prompts:
+            # print(f"Processing {len(qa_prompts)} QA queries...")
+            qa_responses = self.llm_client.call_batch(qa_prompts, adapter_name="qa")
+            
+            # Map back to original indices
+            for original_idx, response in zip(qa_indices, qa_responses):
+                final_responses[original_idx] = response
+
+        # 3. Run Schema Batch (Adapter: "schema")
+        if schema_prompts:
+            # print(f"Processing {len(schema_prompts)} Schema queries...")
+            schema_responses = self.llm_client.call_batch(schema_prompts, adapter_name="schema")
+            
+            # Map back to original indices
+            for original_idx, response in zip(schema_indices, schema_responses):
+                final_responses[original_idx] = response
+
+        # =========================================================
+
         df_response = df_prompt.with_columns(
-            pl.Series("response", responses, dtype=pl.Utf8)
+            pl.Series("response", final_responses, dtype=pl.Utf8)
         )
         return df_response
   
-    
     def extract(self, df: pl.DataFrame) -> pl.DataFrame:
         
-        # print(f"Shape before: format templates {df.shape} ")
-        # Format the input Dataframe
+        # Step 1: Format & Classify
         processed = []
         for row in df.iter_rows(named=True):
             for chunk in row['chunks']:
                 processed += self._format_templates(row['query'], [chunk['chunkcontent']])
-        # print(f"Shape before: classify {df.shape} ")
-        # Score the passages
-
+        
         scores = self._classify(processed)
-        # print(f"Shape before: new DF {df.shape} ")
 
-
-        # Step 2: explode the list into multiple rows
         expanded_df = df.explode("chunks")
-        # print(f"Shape before: unnest {expanded_df.shape} ")
-
-        # Step 3: unnest the struct inside the list
         expanded_df = expanded_df.unnest("chunks")
-        # print(f"Shape before: float {expanded_df.shape} ")
 
         scores_df = expanded_df.with_columns(
             pl.Series('score', scores, dtype=pl.Float64)
         )
 
-        # print(f"Shape before: norm {scores_df.shape} ")
-
-        # Max normalization of scores for each docid TODO: need to add it do the config
         norm_df = scores_df.with_columns(
             (pl.col("score") / pl.col("score").max().over("doc_id")).alias("score_norm")
         )
-        # print(f"Shape before: filter {norm_df.shape} ")
 
-        # Filter the DataFrame based on the score threshold
+        # Step 2: Filter (Optimized Parallel)
         filtered_df = self._filter(norm_df, threshold=self.reranker_classification_threshold)
-        # print(f"Shape before: generates {filtered_df.shape} ")
-        # print(filtered_df)
+        
+        # Step 3: Generate (Optimized Parallel)
         generated_df = self._generate_output(filtered_df)
-        # print(f"Shape before: extract exact {filtered_df.shape} ")
 
         final_df = generated_df
-        # print(final_df)
-        return final_df 
-
-        
-
- 
-        
-
+        return final_df

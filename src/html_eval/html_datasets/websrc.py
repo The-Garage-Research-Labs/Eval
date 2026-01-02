@@ -54,11 +54,12 @@ class WebSrcDataset(BaseHTMLDataset):
             (pl.col('id').cast(pl.Int32) == website_id)
         )
         
+    
         return Sample(**{
             "id": row['id'],
             "content": html_row_df['html'][0] if not html_row_df.is_empty() else None,
             "query": row['question'],
-            "ground_truth": row['answer']
+            "ground_truth": row.get("answer",None) #Account for test set
         })
 
     

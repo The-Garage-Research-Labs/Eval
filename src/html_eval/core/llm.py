@@ -177,35 +177,48 @@ class VLLMClient(LLMClient):
         if not model_name:
             raise ValueError("model_name must be provided in the config for VLLMClient")
 
-        # vLLM-specific engine arguments (e.g., for multi-GPU)
         self.engine_args = config.get("engine_args", {})
-
-        # Check if pre-defined loras exist in config to auto-enable LoRA support
-        self.lora_config = config.get("lora_modules", {}) # Format: {"name": "path/to/lora"}
-        print("LoRA modules to load:", self.lora_config)
-        if self.lora_config or config.get("enable_lora", False):
+        
+        # 1. Separate LoRA paths from their Configs
+        self.lora_config_raw = config.get("lora_modules", {}) or {}
+        
+        # We need to inform vLLM that we are using LoRA
+        if self.lora_config_raw or config.get("enable_lora", False):
             self.engine_args["enable_lora"] = True
-            # Optional: Tune these based on VRAM (defaults usually work)
-            # engine_args["max_loras"] = 4 
-            # engine_args["max_lora_rank"] = 64
-        print(f"Initializing vLLM model '{model_name}' with engine args: {self.engine_args}")
-        # Guard initialization with a global lock to avoid races
-        with _vllm_init_lock:
-            self.llm = LLM(model=model_name,max_lora_rank=128, **self.engine_args)
+            # Optional: Increase this if you want to swap between 3 adapters efficiently
+            self.engine_args["max_loras"] = min(len(self.lora_config_raw), 4)
 
-        # 2. Initialize LoRA Registry
-        # vLLM requires a unique integer ID for every loaded adapter.
+        # Initialize vLLM
+        with _vllm_init_lock:
+            self.llm = LLM(model=model_name, max_lora_rank=128, **self.engine_args)
+
+        # --- NEW: AUTO-DETECT CONTEXT LENGTH ---
+        # This grabs the actual limit (e.g., 8192, 32768) from the loaded model config
+        self.context_window_size = self.engine_args.get("max_model_len", 2048)
+        print(f"VLLMClient: Auto-detected max_model_len = {self.context_window_size}")
+        # ---------------------------------------
+
+        # 2. Register Adapters and Store Defaults
         self.lora_requests: Dict[str, LoRARequest] = {}
+        self.adapter_defaults: Dict[str, Dict[str, Any]] = {} # Store temp/top_p per adapter
         self._lora_id_counter = 1
         
-        # Load adapters defined in config
-        for name, path in self.lora_config.items():
+        for name, data in self.lora_config_raw.items():
+            # Handle both string path (legacy) and dict config (new)
+            if isinstance(data, str):
+                path = data
+                defaults = {}
+            else:
+                path = data.get("path")
+                # Extract generation params to save for later
+                defaults = {k: v for k, v in data.items() if k != "path"}
+            
             self.load_adapter(name, path)
+            self.adapter_defaults[name] = defaults
 
-        # per-instance lock to serialize calls to self.llm.generate(...)
         self._generate_lock = threading.Lock()
         
-        # Default generation config
+        # Global Defaults
         gen_conf = config.get("generation_config", {})
         self.temperature = gen_conf.get("temperature", 0.0)
         self.top_p = gen_conf.get("top_p", 1.0)
@@ -214,13 +227,7 @@ class VLLMClient(LLMClient):
         self.enable_thinking = config.get("enable_thinking", False)
 
     def load_adapter(self, name: str, path: str):
-        """
-        Registers a LoRA adapter so it can be called by name.
-        """
-        if name in self.lora_requests:
-            return # Already loaded
-        
-        # Create the vLLM request object with a unique ID
+        if name in self.lora_requests: return
         self.lora_requests[name] = LoRARequest(
             lora_name=name,
             lora_int_id=self._lora_id_counter,
@@ -228,52 +235,51 @@ class VLLMClient(LLMClient):
         )
         self._lora_id_counter += 1
 
-    def _get_lora_request(self, adapter_name: Optional[str]) -> Optional[LoRARequest]:
-        """Helper to retrieve the LoRA object or None."""
-        if not adapter_name:
-            return None
-        
-        if adapter_name not in self.lora_requests:
-            print(f"LoRA adapter '{adapter_name}' not found. Available: {list(self.lora_requests.keys())}")
-            return None
-        
-        return self.lora_requests[adapter_name]
-
     def _format_prompt_with_thinking(self, prompt: str, thinking: bool) -> str:
         if self.enable_thinking or thinking:
             return f"{prompt}<|im_end|>\n<|im_start|>assistant\n"
         else:
             return f"{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
-    
-    def _create_sampling_params(self, **kwargs) -> SamplingParams:
-        return SamplingParams(
-            # seed        = kwargs.get("seed", self.config.get("seed", None)),
-            temperature = kwargs.get("temperature", self.temperature),
-            top_p       = kwargs.get("top_p", self.top_p),
-            max_tokens  = kwargs.get("max_tokens", self.max_tokens),
-            stop        = kwargs.get("stop", self.stop_sequences),
-            truncate_prompt_tokens= self.engine_args.get("max_model_len",None),
-        )
 
-    def call_api(self, prompt: str, adapter_name: str = None, thinking=False, **kwargs) -> str:
-        """
-        :param adapter_name: The string name of the LoRA to use (must be loaded first).
-        """
-        sampling_params = self._create_sampling_params(**kwargs)
-        prompt = self._format_prompt_with_thinking(prompt, thinking)
+    def _get_lora_request(self, adapter_name: Optional[str]) -> Optional[LoRARequest]:
+        if not adapter_name: return None
+        return self.lora_requests.get(adapter_name)
+
+    def _create_sampling_params(self, adapter_name: str = None, **kwargs) -> SamplingParams:
+        # Start with Global Defaults
+        params = {
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "max_tokens": self.max_tokens,
+            "stop": self.stop_sequences
+        }
         
-        # Retrieve the specific LoRA object
-        lora_req = self._get_lora_request(adapter_name)
+        # Override with Adapter Defaults (if defined in config)
+        if adapter_name and adapter_name in self.adapter_defaults:
+            params.update(self.adapter_defaults[adapter_name])
+            
+        # Override with Call-time arguments (highest priority)
+        params.update({k: v for k, v in kwargs.items() if v is not None})
 
-        with self._generate_lock:
-            # Pass lora_request to generate
-            outputs = self.llm.generate(
-                [prompt], 
-                sampling_params, 
-                lora_request=lora_req
-            )
-        print(outputs[0].outputs[0].text)  # Debugging output
-        return outputs[0].outputs[0].text
+        
+        # --- FIX: Ensure room for generation ---
+        max_gen_tokens = params["max_tokens"]
+        # Allow prompt to take up remaining space, minus a small buffer (1 token)
+        safe_truncate_len = self.context_window_size - max_gen_tokens - 1
+        
+        if safe_truncate_len < 128:
+            print(f"WARNING: Max context ({self.context_window_size}) is too close to max_generation ({max_gen_tokens}). Truncation might be aggressive.")
+            # Fallback to prevent crash: ensure at least some context
+            safe_truncate_len = self.context_window_size // 2
+        # ---------------------------------------
+
+        return SamplingParams(
+            temperature=params["temperature"],
+            top_p=params["top_p"],
+            max_tokens=params["max_tokens"],
+            stop=params["stop"],
+            truncate_prompt_tokens=safe_truncate_len,
+        )
 
     def call_batch(
         self,
@@ -282,23 +288,28 @@ class VLLMClient(LLMClient):
         thinking: bool = False,
         **call_api_kwargs,
     ) -> List[Optional[str]]:
-        """
-        Note: vLLM applies the SAME LoRA to the entire batch in this implementation.
-        """
+        
         prompts = list(prompts)
-        sampling_params = self._create_sampling_params(**call_api_kwargs)
+        
+        # pass adapter_name to sampling params creator to fetch specific temp
+        sampling_params = self._create_sampling_params(adapter_name=adapter_name, **call_api_kwargs)
+        
         prompts = [self._format_prompt_with_thinking(p, thinking) for p in prompts]
-        
-        # Retrieve the specific LoRA object
         lora_req = self._get_lora_request(adapter_name)
-        print(f"Using LoRA adapter: {adapter_name}")
-        with self._generate_lock:
-            outputs = self.llm.generate(
-                prompts, 
-                sampling_params, 
-                lora_request=lora_req
-            )
-
-        results = [output.outputs[0].text for output in outputs]
         
-        return results
+        # print(f"Using Adapter: {adapter_name} | Temp: {sampling_params.temperature}")
+
+        with self._generate_lock:
+            outputs = self.llm.generate(prompts, sampling_params, lora_request=lora_req)
+
+        return [output.outputs[0].text for output in outputs]
+
+    # Don't forget to update call_api similarly if you use it individually
+    def call_api(self, prompt: str, adapter_name: str = None, thinking=False, **kwargs) -> str:
+        sampling_params = self._create_sampling_params(adapter_name=adapter_name, **kwargs)
+        prompt = self._format_prompt_with_thinking(prompt, thinking)
+        lora_req = self._get_lora_request(adapter_name)
+
+        with self._generate_lock:
+            outputs = self.llm.generate([prompt], sampling_params, lora_request=lora_req)
+        return outputs[0].outputs[0].text

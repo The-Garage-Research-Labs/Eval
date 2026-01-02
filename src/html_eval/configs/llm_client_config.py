@@ -1,22 +1,23 @@
 from dataclasses import dataclass, field, asdict
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from html_eval.core.llm import LLMClient, NvidiaLLMClient, VLLMClient
-
 
 @dataclass
 class LLMClientConfig:
     llm_source: str = "nvidia"
     model_name: str = "google/gemma-3n-e2b-it"
-    api_key: Optional[str] = None  # Used only for API-based clients
+    api_key: Optional[str] = None
     temperature: float = 0.0
     top_p: float = 0.7
     max_tokens: int = 8192
     seed: int = 42
     enable_thinking: bool = False
     
-    # vLLM-specific args (engine init, like tensor_parallel, gpu_mem_utilization, etc.)
     engine_args: Dict[str, Any] = field(default_factory=dict)
-    lora_modules: Optional[Dict[str, str]] = None  # e.g., {"lora_A_path": "path/to/lora_A", "lora_B_path": "path/to/lora_B"}
+    
+    # CHANGE: Type hint now supports Dict containing config details
+    # Example: { "extractor": {"path": "...", "temperature": 0.1}, "creative": {"path": "...", "temperature": 0.9} }
+    lora_modules: Optional[Dict[str, Union[str, Dict[str, Any]]]] = None 
 
     def create_llm_client(self) -> LLMClient:
         config = {
@@ -30,10 +31,9 @@ class LLMClientConfig:
             "enable_thinking": self.enable_thinking,
         }
 
-        # only pass engine_args if vLLM
         if self.llm_source == "vllm":
             config["engine_args"] = self.engine_args
-            config["lora_modules"] = self.lora_modules
+            config["lora_modules"] = self.lora_modules # Pass the new dict structure
             return VLLMClient(config=config)
         elif self.llm_source == "nvidia":
             return NvidiaLLMClient(config=config)

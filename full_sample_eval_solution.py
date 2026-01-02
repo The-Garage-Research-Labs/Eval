@@ -4,9 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 # move to the directory where src is located
 # os.chdir('/home/abdo/PAPER/Eval/src')
-
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # Setting an API key for NVIDIA 
-os.environ['NVIDIA_API_KEY'] = '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'
 
 from html_eval import Experiment
 from html_eval.configs.experiment_config import ExperimentConfig
@@ -31,16 +30,16 @@ EXPERIMENT_NAME = "test"
 
 SWDE_DOMAINS = {
     "auto": 17923,
-    "university": 16705,
-    "camera": 5258,
-    "book": 20000,
-    "job": 20000,
-    "nbaplayer": 4405,
-    "movie": 20000,
-    "restaurant": 20000
+    # "university": 16705,
+    # "camera": 5258,
+    # "book": 20000,
+    # "job": 20000,
+    # "nbaplayer": 4405,
+    # "movie": 20000,
+    # "restaurant": 20000
 }
-SWDE_SAMPLES = 20
-WEBSRC_TOTAL = 50000
+SWDE_SAMPLES = 10
+WEBSRC_TOTAL = 40000
 WEBSRC_SAMPLES = 100
 BATCH_SIZE = 10
 SEED = 42
@@ -59,9 +58,16 @@ for dom , val in SWDE_DOMAINS.items():
 
 
 
+# dataset_configs.append(WebSrcConfig(
+#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_html_content.jsonl',
+#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_dataset.jsonl',
+#     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
+#     batch_size=BATCH_SIZE
+# ))
+
 dataset_configs.append(WebSrcConfig(
-    html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_html_content.jsonl',
-    data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_dataset.jsonl',
+    html_source_path='/home/abdo/PAPER/Eval/data/websrc/test/html_content.jsonl',
+    data_source_path='/home/abdo/PAPER/Eval/data/websrc/test/dataset.jsonl',
     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
     batch_size=BATCH_SIZE
 ))
@@ -70,7 +76,7 @@ print(f"Created {len(dataset_configs)} of dataset configs.")
 reranker_preprocessor_config = RerankerPreprocessorConfig(
     attr_cutoff_len=5,
     # chunk_size=100000000, #500 is best after finetuning
-    chunk_size=2000, 
+    chunk_size=3500, 
     fetch_workers=mp.cpu_count(),
     cpu_workers=mp.cpu_count()
 )
@@ -92,18 +98,38 @@ llm_client_config = LLMClientConfig(
         model_name='Qwen/Qwen3-0.6B',
         seed=SEED,
         # api_key="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",
+        max_tokens= 1024, # max new tokens
         engine_args={
-            "gpu_memory_utilization": 0.7,
-            "max_model_len": 8196,
+            "gpu_memory_utilization": 0.8, 
+            "max_model_len": 8196, # max total tokens
             # "enforce_eager": True,
         },
-        # temperature=1.0,
-        lora_modules={
-            # "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_r64_n",
-            "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL",
-            # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
-            "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA"
+        temperature=0.0,
+        # lora_modules={
+        #     # "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_r64_n",
+        #     "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
+        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
+        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc_final"
+        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc"
+        #     "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc_second_chance"
 
+            
+        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final_SCHEMA_Special",
+
+        # },
+        lora_modules={
+            "pruner": {
+                "path": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
+                "temperature": 1.0  
+            },
+            "qa": {
+                "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc",
+                "temperature": 1.0 
+            },
+            "schema": {
+                "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final",
+                "temperature": 0.0  
+            }
         },
 ) 
 
@@ -119,66 +145,72 @@ reranker_extractor_config = RerankerExtractorConfig(
         # model_name='openai/gpt-oss-120b',
         # model_name='qwen/qwen3-235b-a22b',
     ),
-#     llm_pruner_config=LLMClientConfig(
-#         # model_name="openai/gpt-oss-120b",
-#         llm_source='vllm',
-#         model_name='Qwen/Qwen3-0.6B',
-#         seed=SEED,
-#         # api_key="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",
-#         engine_args={
-#             "gpu_memory_utilization": 0.7,
-#             "max_model_len": 6096,
-#             # "enforce_eager": True,
-#         },
-#         # temperature=0.5,
-#         lora_modules={
-#             # "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_r64_n",
-#             "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL",
-#             "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
-#         },
-# ) ,
-    query_generation_prompt_template="""
-    You are a highly precise Context-Aware Question Answering engine. Your sole task is to extract the answer to the User Query based ONLY on the provided Context.
-    
-    User Query:
-    {query}
-    
-    Context:
-    {content}
-    
-    INSTRUCTIONS:
-    1. Answer the query using ONLY information found in the Context. Do not use outside knowledge.
-    2. If the answer is not present in the Context, set the value to null.
-    3. Your output must be valid, parseable JSON.
-    4. Provide concise answers without additional commentary.
-    5. If the query is boolean, respond with yes or no.
-    6. Choose the most relevant information if multiple answers exist.
-    
-    OUTPUT FORMAT:
-    REASONING: "The reasoning behind the answer"
-    {{"answer": "The extracted text or synthesized answer"}}
-    
-                """,
-    schema_generation_prompt_template="""
-    You are an expert Data Extraction and ETL agent. Your task is to parse the provided HTML content and extract specific data points to populate a target JSON schema.
-    
-    Target Schema Structure:
-    {query}
-    
-    HTML Content:
-    {content}
-    
-    RULES:
-    1. Extract exact substrings from the text content of the HTML. Do not invent data.
-    2. Ignore HTML tags, attributes, and styles; extract only the visible text value.
-    3. If a specific field from the schema is not found in the content, set its value to null.
-    4. Ensure the output strictly follows the keys defined in the "Target Schema Structure".
-    5. Your output MUST be exactly as shown in the HTML.
-    6. Be concise and avoid adding any extra information outside the schema.
-    
-    OUTPUT JSON:
+    # llm_pruner_config=LLMClientConfig(
+    #     # model_name="openai/gpt-oss-120b",
+    #     llm_source='vllm',
+    #     model_name='Qwen/Qwen3-0.6B',
+    #     seed=SEED,
+    #     # api_key="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",
+    #     engine_args={
+    #         "gpu_memory_utilization": 0.7,
+    #         "max_model_len": 8196,
+    #         # "enforce_eager": True,
+    #     },
+    #     # temperature=1.0,
+    #     lora_modules={
+    #         # "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_r64_n",
+    #         "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
+    #         "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
+    #         # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc"
+    #         # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final_SCHEMA_Special",
+
+    #     },
+    # ),
+query_generation_prompt_template="""
+You are a highly precise Context-Aware Question Answering engine. Your sole task is to extract the answer to the User Query based ONLY on the provided Context.
+
+User Query:
+{query}
+
+Context:
+{content}
+
+INSTRUCTIONS:
+1. Answer the query using ONLY information found in the Context. Do not use outside knowledge.
+2. If the answer is not present in the Context, set the value to null.
+3. Your output must be valid, parseable JSON.
+4. Provide concise answers without additional commentary.
+5. If the query is boolean, respond with yes or no.
+6. Choose the most relevant information if multiple answers exist.
+
+OUTPUT FORMAT:
+REASONING: "The reasoning behind the answer"
+{{"answer": "The extracted text or synthesized answer"}}
+    """,
+schema_generation_prompt_template="""
+You are an expert Data Extraction and ETL agent. Your task is to parse the provided HTML content and extract specific data points to populate a target JSON schema.
+
+Target Schema Structure:
+{query}
+
+HTML Content:
+{content}
+
+RULES:
+1. Extract exact substrings from the text content of the HTML. Do not invent data.
+2. Ignore HTML tags, attributes, and styles; extract only the visible text value.
+3. If a specific field from the schema is not found in the content, set its value to null.
+4. Ensure the output strictly follows the keys defined in the "Target Schema Structure".
+5. Your output MUST be exactly as shown in the HTML.
+6. Be concise and avoid adding any extra information outside the schema.
+
+
+OUTPUT FORMAT:
+REASONING: "The reasoning behind the answer"
+{{json filled schema}}
+
 """,
-    classification_prompt_template= (
+classification_prompt_template= (
             "You are a precision HTML content reranker. Your task is to evaluate HTML chunks "
             "for their potential to populate a given schema with meaningful data.\n\n"
             "## Core Objective:\n"
@@ -190,8 +222,8 @@ reranker_extractor_config = RerankerExtractorConfig(
             "3. Information Density: Evaluate the quantity and quality of extractable data\n"
             "4. Relevance Scoring: Assign a binary relevance score based on extraction potential\n"
         ),
-    reranker_quantization=None,
-    llm_pruner_prompt="""
+reranker_quantization=None,
+llm_pruner_prompt="""
 You are a Smart and Clever Context Selector. Your task is to filter a list of HTML chunks, keeping ONLY the ones relevant to the provided Query/Schema and any necessary context to answer the query.
 
 Query/Schema:
@@ -218,8 +250,8 @@ Query/Schema:
 Output ONLY a valid JSON list of indices.
 Example: [1, 4, 12] or []
 """,
-    disable_reranker=USE_PRUNER,
-    use_llm_pruner=USE_PRUNER,
+disable_reranker=USE_PRUNER,
+use_llm_pruner=USE_PRUNER,
     # reranker_gpu_memory_utilization=TOTAL_GPU_UTIL - GEN_GPU_UTIL,
 )
 

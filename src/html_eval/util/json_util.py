@@ -25,7 +25,7 @@ def is_schema(text: str) -> bool:
     return False
 
 
-def extract_and_repair_json(response: Union[str,dict] , spread_values: False) -> dict:
+def extract_and_repair_json(response: Union[str,dict] , spread_values:bool = False) -> dict:
     """
     Worker function for processing a single LLM response.
     Returns a dict (empty dict on error). Top-level function for pickling.

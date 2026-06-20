@@ -14,29 +14,67 @@ from html_eval.configs.pipeline_config import RerankerPostprocessorConfig
 
 def _safe_extract_worker(response: str, content: str, query: str, extract_exact: bool) -> Dict[str, Any]:
     """
-    Optimized worker that takes raw strings instead of a meta dict.
+    Optimized worker that takes raw strings and returns parsed prediction + step logs.
     """
+    import copy
+    exact_match_log = {}
+    error_msg = None
+    parsed_raw = None
+    
     try:
         # 1. Parse JSON
         is_schema_query = is_schema(query) if query else False
         parsed_response = extract_and_repair_json(response, not is_schema_query)
 
+        parsed_raw = parsed_response
+
         if isinstance(parsed_response, str):
-            return parsed_response
+            return {
+                "prediction": parsed_response,
+                "postprocessor_log": {
+                    "raw_response": response,
+                    "error": None,
+                    "exact_match_log": {}
+                }
+            }
             
         # Validate dict
         if not isinstance(parsed_response, dict):
-            return {"__error__": "[PARSE_ERROR] expected JSON object (dict) from extract_and_repair_json"}
+            error_msg = "[PARSE_ERROR] expected JSON object (dict) from extract_and_repair_json"
+            return {
+                "prediction": {"__error__": error_msg},
+                "postprocessor_log": {
+                    "raw_response": response,
+                    "error": error_msg,
+                    "exact_match_log": {}
+                }
+            }
         
         # 2. Exact Extraction (Heavy CPU part)
         if extract_exact:
             if not content:
-                return {"__error__": "[PARSE_ERROR] exact_extraction requested but no content provided"}
+                error_msg = "[PARSE_ERROR] exact_extraction requested but no content provided"
+                return {
+                    "prediction": {"__error__": error_msg},
+                    "postprocessor_log": {
+                        "raw_response": response,
+                        "error": error_msg,
+                        "exact_match_log": {}
+                    }
+                }
+
+            # create deep copy for log before editing
+            parsed_raw = copy.deepcopy(parsed_response) if hasattr(parsed_response, "copy") else parsed_response
 
             # Iterate over keys and perform fuzzy matching
             for attribute, value in list(parsed_response.items()):
                 if value is None:
                     parsed_response[attribute] = None
+                    exact_match_log[attribute] = {
+                        "value": None,
+                        "original_extracted": None,
+                        "status": "null"
+                    }
                     continue
                 try:
                     val_str = str(value)
@@ -44,18 +82,52 @@ def _safe_extract_worker(response: str, content: str, query: str, extract_exact:
                     # Heavy CPU call -> find_closest_html_node
                     best_match = find_closest_html_node(html_text=content, search_text=val_str)
                     
-                    parsed_response[attribute] = (
-                        normalize_html_text(best_match['text']) 
-                        if best_match and 'text' in best_match 
-                        else None
-                    )
+                    if best_match and 'text' in best_match:
+                        matched_text = normalize_html_text(best_match['text'])
+                        parsed_response[attribute] = matched_text
+                        exact_match_log[attribute] = {
+                            "value": matched_text,
+                            "original_extracted": value,
+                            "xpath": best_match.get("xpath"),
+                            "score": best_match.get("score"),
+                            "status": "success"
+                        }
+                    else:
+                        parsed_response[attribute] = None
+                        exact_match_log[attribute] = {
+                            "value": None,
+                            "original_extracted": value,
+                            "status": "not_found"
+                        }
                 except Exception as e:
-                    parsed_response[attribute] = {"__error__": f"[MATCH_ERROR] {e}", "original": value}
+                    err_msg = f"[MATCH_ERROR] {e}"
+                    parsed_response[attribute] = {"__error__": err_msg, "original": value}
+                    exact_match_log[attribute] = {
+                        "value": None,
+                        "original_extracted": value,
+                        "error": err_msg,
+                        "status": "error"
+                    }
 
-        return parsed_response
+        return {
+            "prediction": parsed_response,
+            "postprocessor_log": {
+                "raw_response": response,
+                "error": error_msg,
+                "exact_match_log": exact_match_log
+            }
+        }
 
     except Exception as e:
-        return {"__error__": f"[PARSE_ERROR] {e}"}
+        error_msg = f"[PARSE_ERROR] {e}"
+        return {
+            "prediction": {"__error__": error_msg},
+            "postprocessor_log": {
+                "raw_response": response,
+                "error": error_msg,
+                "exact_match_log": {}
+            }
+        }
 
 
 # ==============================================================================
@@ -75,13 +147,26 @@ class PostProcessor:
         content = meta.get('content')
         query = meta.get('query')
         
-        parsed = _safe_extract_worker(
+        parsed_dict = _safe_extract_worker(
             response=response, 
             content=content, 
             query=query, 
             extract_exact=self._exact_extraction
         )
-        return SamplePrediction(prediction=parsed, **meta)
+        prediction = parsed_dict["prediction"]
+        postprocessor_log = parsed_dict["postprocessor_log"]
+        
+        step_logs = {
+            **(meta.get("step_logs") or {}),
+            "postprocessor": postprocessor_log
+        }
+        
+        return SamplePrediction(
+            prediction=prediction,
+            step_logs=step_logs,
+            preprocessed_content=meta.get("preprocessed_content"),
+            **{k: v for k, v in meta.items() if k not in ("step_logs", "preprocessed_content")}
+        )
 
     def process_responses(
         self,
@@ -124,8 +209,21 @@ class PostProcessor:
         # Re-assemble results in the main process
         # This is fast because no heavy computation happens here
         final_predictions = []
-        for parsed, meta in zip(parsed_results, metas):
-            final_predictions.append(SamplePrediction(prediction=parsed, **meta))
+        for parsed_dict, meta in zip(parsed_results, metas):
+            prediction = parsed_dict["prediction"]
+            postprocessor_log = parsed_dict["postprocessor_log"]
+            
+            step_logs = {
+                **(meta.get("step_logs") or {}),
+                "postprocessor": postprocessor_log
+            }
+            
+            final_predictions.append(SamplePrediction(
+                prediction=prediction,
+                step_logs=step_logs,
+                preprocessed_content=meta.get("preprocessed_content"),
+                **{k: v for k, v in meta.items() if k not in ("step_logs", "preprocessed_content")}
+            ))
             
         return final_predictions
 
@@ -155,28 +253,63 @@ class PostProcessor:
         # Handle optional columns gracefully
         queries = df[query_col].to_list() if query_col in df.columns else [None] * len(df)
         
-        # For exact extraction, we prefer 'content', but fallback to 'filtered_html' if needed
-        # depending on your logic. Usually 'content' is the raw HTML.
-        contents = df[content_col].to_list() if content_col in df.columns else [None] * len(df)
+        # For exact extraction, we prefer 'cleaned_content' if present, else fallback
+        contents = df["cleaned_content"].to_list() if "cleaned_content" in df.columns else (df[content_col].to_list() if content_col in df.columns else [None] * len(df))
         
         # 2. Build Metadata Lightweights (pointers, not deep copies)
-        # We construct this list to zip back later.
-        # Note: Using get_column(name).to_list() is faster than row iteration
         ids = df[id_col].to_list() if id_col in df.columns else [None] * len(df)
         gts = df[gt_col].to_list() if gt_col in df.columns else [None] * len(df)
         f_htmls = df[filtered_html_col].to_list() if filtered_html_col in df.columns else [None] * len(df)
         
+        # Capture step logs columns if present
+        preprocessor_logs = df["preprocessor_log"].to_list() if "preprocessor_log" in df.columns else [None] * len(df)
+        cleaned_contents = df["cleaned_content"].to_list() if "cleaned_content" in df.columns else [None] * len(df)
+        reranker_chunks = df["reranker_chunks"].to_list() if "reranker_chunks" in df.columns else [None] * len(df)
+        pruner_logs = df["pruner_logs"].to_list() if "pruner_logs" in df.columns else [None] * len(df)
+        prompts = df["prompt"].to_list() if "prompt" in df.columns else [None] * len(df)
+        
         # Reconstruct metas list for the final SamplePrediction objects
-        metas = [
-            {
+        metas = []
+        for i, q, g, f, c, prep_log, clean_c, rer_chk, prn_log, p, r in zip(
+            ids, queries, gts, f_htmls, contents, preprocessor_logs, cleaned_contents, reranker_chunks, pruner_logs, prompts, responses
+        ):
+            # Format reranker logs if present
+            rer_log = None
+            if rer_chk is not None:
+                # Convert list of structs (Polars/Python dicts) to lists of dicts
+                if hasattr(rer_chk, "to_list"):
+                    rer_chk_list = rer_chk.to_list()
+                else:
+                    rer_chk_list = list(rer_chk)
+                rer_log = {"chunks": rer_chk_list}
+
+            # Format pruner logs if present
+            prn_log_val = None
+            if prn_log is not None:
+                if hasattr(prn_log, "to_list"):
+                    prn_log_val = prn_log.to_list()
+                else:
+                    prn_log_val = list(prn_log)
+
+            step_logs = {
+                "preprocessor": prep_log,
+                "reranker": rer_log,
+                "pruner": prn_log_val,
+                "extractor": {
+                    "prompt": p,
+                    "raw_response": r
+                }
+            }
+            
+            metas.append({
                 "id": i,
                 "query": q,
                 "ground_truth": g,
                 "filtered_html": f,
-                "content": c
-            }
-            for i, q, g, f, c in zip(ids, queries, gts, f_htmls, contents)
-        ]
+                "content": c,
+                "preprocessed_content": clean_c,
+                "step_logs": step_logs
+            })
 
         # 3. Process
         preds = self.process_responses(
@@ -192,4 +325,11 @@ class PostProcessor:
             return preds
 
         pred_values = [p.prediction for p in preds]
-        return df.with_columns(pl.Series("prediction", pred_values))
+        df_out = df.with_columns([
+            pl.Series("prediction", pred_values)
+        ])
+        if "preprocessed_content" not in df_out.columns:
+            df_out = df_out.with_columns(pl.Series("preprocessed_content", [p.preprocessed_content for p in preds]))
+        if "step_logs" not in df_out.columns:
+            df_out = df_out.with_columns(pl.Series("step_logs", [p.step_logs for p in preds]))
+        return df_out

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any, Union
-from html_eval.core.llm import LLMClient, NvidiaLLMClient, VLLMClient
+from html_eval.core.llm import LLMClient, NvidiaLLMClient, VLLMClient, LiteLLMClient
 
 @dataclass
 class LLMClientConfig:
@@ -12,6 +12,10 @@ class LLMClientConfig:
     max_tokens: int = 8192
     seed: int = 42
     enable_thinking: bool = False
+
+    # LiteLLM-specific (ignored by other backends)
+    api_base: Optional[str] = None          # override endpoint, e.g. for Ollama / LiteLLM proxy
+    extra_params: Dict[str, Any] = field(default_factory=dict)  # passed verbatim to litellm.completion
     
     engine_args: Dict[str, Any] = field(default_factory=dict)
     
@@ -33,12 +37,19 @@ class LLMClientConfig:
 
         if self.llm_source == "vllm":
             config["engine_args"] = self.engine_args
-            config["lora_modules"] = self.lora_modules # Pass the new dict structure
+            config["lora_modules"] = self.lora_modules
             return VLLMClient(config=config)
         elif self.llm_source == "nvidia":
             return NvidiaLLMClient(config=config)
+        elif self.llm_source == "litellm":
+            config["api_base"] = self.api_base
+            config["extra_params"] = self.extra_params
+            return LiteLLMClient(config=config)
         else:
-            raise ValueError(f"Unsupported llm_source: {self.llm_source}")
+            raise ValueError(
+                f"Unsupported llm_source: '{self.llm_source}'. "
+                "Choose from: 'nvidia', 'vllm', 'litellm'."
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

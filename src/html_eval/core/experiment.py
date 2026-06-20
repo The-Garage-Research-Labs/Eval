@@ -178,6 +178,8 @@ class Experiment:
                         item.setdefault("ground_truth", None)
                         item.setdefault("prediction", None)
                         item.setdefault("filtered_html", None)
+                        item.setdefault("preprocessed_content", None)
+                        item.setdefault("step_logs", None)
                         yield SamplePrediction(**item)
                     continue
 
@@ -196,6 +198,8 @@ class Experiment:
                 obj.setdefault("ground_truth", None)
                 obj.setdefault("prediction", None)
                 obj.setdefault("filtered_html", None)
+                obj.setdefault("preprocessed_content", None)
+                obj.setdefault("step_logs", None)
 
                 yield SamplePrediction(**obj)
 

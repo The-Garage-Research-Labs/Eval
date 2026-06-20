@@ -17,8 +17,9 @@ from html_eval.configs.pipeline_config import RerankerPreprocessorConfig
 
 def _chunk_worker(args: tuple) -> Dict[str, Any]:
     sample, config, idx = args
+    raw_content = sample.content if getattr(sample, "content", None) else ""
     cleaned_text = clean_html(
-        html_content=sample.content,
+        html_content=raw_content,
         extra_remove_tags=config.extra_remove_tags,
         strip_attrs=config.strip_attrs,
         strip_links=config.strip_links,
@@ -27,7 +28,18 @@ def _chunk_worker(args: tuple) -> Dict[str, Any]:
     
     try:
         if not cleaned_text:
-            return {'doc_id': idx, 'chunks': [{'chunkid': f"{idx}-err", 'chunkcontent': '[Chunk Worker ERROR] empty content or fetch failed'}]}
+            err_chunks = [{'chunkid': f"{idx}-err", 'chunkcontent': '[Chunk Worker ERROR] empty content or fetch failed'}]
+            return {
+                'doc_id': idx,
+                'chunks': err_chunks,
+                'cleaned_content': '',
+                'preprocessor_log': {
+                    'raw_len': len(raw_content) if raw_content else 0,
+                    'cleaned_len': 0,
+                    'num_chunks': 0,
+                    'error': 'empty content or fetch failed'
+                }
+            }
         if config.disable_chunking:
             chunks = [cleaned_text]
         else:
@@ -37,19 +49,34 @@ def _chunk_worker(args: tuple) -> Dict[str, Any]:
                                         attr_cutoff_len=config.attr_cutoff_len)
         
         chunks_list = [{'chunkid': f"{idx}-{i+1}", 'chunkcontent': c} for i, c in enumerate(chunks)]
-        return {'doc_id': idx, 'chunks': chunks_list}
+        return {
+            'doc_id': idx,
+            'chunks': chunks_list,
+            'cleaned_content': cleaned_text,
+            'preprocessor_log': {
+                'raw_len': len(raw_content) if raw_content else 0,
+                'cleaned_len': len(cleaned_text),
+                'num_chunks': len(chunks_list)
+            }
+        }
     except Exception as e:
         tb = traceback.format_exc()
-        err_payload = {
-            "doc_id": idx,
-            "chunks": [
+        return {
+            'doc_id': idx,
+            'chunks': [
                 {
                     "chunkid": f"{idx}-err",
                     "chunkcontent": f"[ERROR {type(e).__name__}] {e}\n{tb}"
                 }
-            ]
+            ],
+            'cleaned_content': cleaned_text if cleaned_text else "",
+            'preprocessor_log': {
+                'raw_len': len(raw_content) if raw_content else 0,
+                'cleaned_len': len(cleaned_text) if cleaned_text else 0,
+                'num_chunks': 0,
+                'error': f"[ERROR {type(e).__name__}] {e}\n{tb}"
+            }
         }
-        return idx, err_payload
 
 
 class BasePreprocessor:

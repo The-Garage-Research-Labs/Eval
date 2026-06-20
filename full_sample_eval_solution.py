@@ -26,22 +26,22 @@ import multiprocessing as mp
 ######################################## CONSTANTS
 # EXPERIMENT_NAME = "pruner_best_model"
 # EXPERIMENT_NAME = "pruner_trying"
-EXPERIMENT_NAME = "test"
+EXPERIMENT_NAME = "llm-ablation"
 
 SWDE_DOMAINS = {
     "auto": 17923,
-    # "university": 16705,
-    # "camera": 5258,
-    # "book": 20000,
-    # "job": 20000,
-    # "nbaplayer": 4405,
-    # "movie": 20000,
-    # "restaurant": 20000
+    "university": 16705,
+    "camera": 5258,
+    "book": 20000,
+    "job": 20000,
+    "nbaplayer": 4405,
+    "movie": 20000,
+    "restaurant": 20000
 }
-SWDE_SAMPLES = 10
-WEBSRC_TOTAL = 40000
+SWDE_SAMPLES = 250
+WEBSRC_TOTAL = 50000
 WEBSRC_SAMPLES = 100
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 SEED = 42
 USE_PRUNER = True  
 ########################################## CONFIG
@@ -59,24 +59,24 @@ for dom , val in SWDE_DOMAINS.items():
 
 
 # dataset_configs.append(WebSrcConfig(
-#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_html_content.jsonl',
-#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc_dev/dev/dev_dataset.jsonl',
+#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_html_content.jsonl',
+#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_dataset.jsonl',
 #     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
 #     batch_size=BATCH_SIZE
 # ))
 
-dataset_configs.append(WebSrcConfig(
-    html_source_path='/home/abdo/PAPER/Eval/data/websrc/test/html_content.jsonl',
-    data_source_path='/home/abdo/PAPER/Eval/data/websrc/test/dataset.jsonl',
-    indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
-    batch_size=BATCH_SIZE
-))
+# dataset_configs.append(WebSrcConfig(
+#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/test/html_content.jsonl',
+#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/test/dataset.jsonl',
+#     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
+#     batch_size=BATCH_SIZE
+# ))
 print(f"Created {len(dataset_configs)} of dataset configs.")
 
 reranker_preprocessor_config = RerankerPreprocessorConfig(
     attr_cutoff_len=5,
     # chunk_size=100000000, #500 is best after finetuning
-    chunk_size=3500, 
+    chunk_size=4000, 
     fetch_workers=mp.cpu_count(),
     cpu_workers=mp.cpu_count()
 )
@@ -101,7 +101,7 @@ llm_client_config = LLMClientConfig(
         max_tokens= 1024, # max new tokens
         engine_args={
             "gpu_memory_utilization": 0.8, 
-            "max_model_len": 8196, # max total tokens
+            "max_model_len": 8192, # max total tokens
             # "enforce_eager": True,
         },
         temperature=0.0,
@@ -110,9 +110,9 @@ llm_client_config = LLMClientConfig(
         #     "pruner": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
         #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final"
         #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc_final"
-        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc"
+        #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc" 0.8308197229754362 (0)
         #     "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc_second_chance"
-
+        # abdo-Mansour/Extractor_Adaptor_final_loser_2 0.8620543694400826 (1)
             
         #     # "extractor": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final_SCHEMA_Special",
 
@@ -120,7 +120,7 @@ llm_client_config = LLMClientConfig(
         lora_modules={
             "pruner": {
                 "path": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
-                "temperature": 1.0  
+                "temperature": 0.0  
             },
             "qa": {
                 "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc",
@@ -186,7 +186,8 @@ INSTRUCTIONS:
 OUTPUT FORMAT:
 REASONING: "The reasoning behind the answer"
 {{"answer": "The extracted text or synthesized answer"}}
-    """,
+
+""",
 schema_generation_prompt_template="""
 You are an expert Data Extraction and ETL agent. Your task is to parse the provided HTML content and extract specific data points to populate a target JSON schema.
 
@@ -204,11 +205,9 @@ RULES:
 5. Your output MUST be exactly as shown in the HTML.
 6. Be concise and avoid adding any extra information outside the schema.
 
-
 OUTPUT FORMAT:
 REASONING: "The reasoning behind the answer"
 {{json filled schema}}
-
 """,
 classification_prompt_template= (
             "You are a precision HTML content reranker. Your task is to evaluate HTML chunks "

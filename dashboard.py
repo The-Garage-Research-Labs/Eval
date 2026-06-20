@@ -105,6 +105,122 @@ def render_html_preview(html_content):
         """
         st.components.v1.html(wrapped_html, height=600, scrolling=True)
 
+def render_diagnostics(record: Dict[str, Any]):
+    if "step_logs" not in record or not record["step_logs"]:
+        return
+
+    st.markdown("---")
+    st.subheader("📝 Step-by-Step Diagnostics")
+    
+    logs = record["step_logs"]
+    if isinstance(logs, str):
+        try:
+            logs = json.loads(logs)
+        except Exception:
+            try:
+                logs = ast.literal_eval(logs)
+            except Exception:
+                st.warning("Could not parse step logs.")
+                return
+    
+    # We can create tabs:
+    tabs = st.tabs(["🔍 Preprocessing", "⚖️ Reranking", "✂️ LLM Pruning", "🤖 Extraction", "⚙️ Postprocessing"])
+    
+    # 1. Preprocessing Tab
+    with tabs[0]:
+        prep = logs.get("preprocessor")
+        if prep:
+            st.write(f"**Raw Content Length:** {prep.get('raw_len', 0)} characters")
+            st.write(f"**Cleaned Content Length:** {prep.get('cleaned_len', 0)} characters")
+            reduction = 1 - (prep.get('cleaned_len', 0) / max(1, prep.get('raw_len', 0)))
+            st.write(f"**Size Reduction:** {reduction:.1%}")
+            st.write(f"**Chunks Generated:** {prep.get('num_chunks', 0)}")
+            if prep.get("error"):
+                st.error(f"Error during preprocessing: {prep['error']}")
+        else:
+            st.info("No preprocessing logs available.")
+
+        # Also let's show the Preprocessed HTML under a togglable expander or iframe!
+        preprocessed_html = record.get("preprocessed_content")
+        if preprocessed_html:
+            with st.expander("👁️ View Preprocessed HTML"):
+                st.components.v1.html(
+                    f'<div style="background: white; color: black; padding: 10px; height: 100%; overflow: auto;">{preprocessed_html}</div>',
+                    height=400,
+                    scrolling=True
+                )
+                
+    # 2. Reranking Tab
+    with tabs[1]:
+        rerank = logs.get("reranker")
+        if rerank and rerank.get("chunks"):
+            chunks_data = rerank["chunks"]
+            df_chunks = pd.DataFrame(chunks_data)
+            st.dataframe(df_chunks, use_container_width=True, hide_index=True)
+        else:
+            st.info("No reranking details available (reranker might have been disabled).")
+            
+    # 3. LLM Pruning Tab
+    with tabs[2]:
+        pruner = logs.get("pruner")
+        if pruner:
+            # pruner is a list of logs per chunk
+            for idx, p_log in enumerate(pruner):
+                if not p_log: continue
+                with st.expander(f"Chunk {idx + 1} Pruning Details"):
+                    st.text_area("Pruner Prompt", p_log.get("prompt", ""), height=150, key=f"prn_prompt_{record['id']}_{idx}")
+                    st.text_area("LLM Response", p_log.get("response", ""), height=80, key=f"prn_resp_{record['id']}_{idx}")
+                    st.write(f"**Selected Indices:** {p_log.get('selected_indices', [])}")
+        else:
+            st.info("No LLM pruner logs available.")
+            
+    # 4. Extraction Tab
+    with tabs[3]:
+        extractor = logs.get("extractor")
+        if extractor:
+            st.text_area("Generator Prompt", extractor.get("prompt", ""), height=200, key=f"ext_prompt_{record['id']}")
+            st.text_area("Raw Generator Response", extractor.get("raw_response", ""), height=150, key=f"ext_resp_{record['id']}")
+        else:
+            st.info("No extractor logs available.")
+            
+    # 5. Postprocessing Tab
+    with tabs[4]:
+        post = logs.get("postprocessor")
+        if post:
+            if post.get("error"):
+                st.error(f"Postprocessing Error: {post['error']}")
+            
+            exact_match = post.get("exact_match_log")
+            if exact_match:
+                st.write("**Exact Extraction / Fuzzy Alignment Log:**")
+                match_data = []
+                for field, details in exact_match.items():
+                    match_data.append({
+                        "Attribute/Field": field,
+                        "Status": details.get("status"),
+                        "Original Extracted": str(details.get("original_extracted")),
+                        "Aligned Text": str(details.get("value")),
+                        "Score": details.get("score"),
+                        "XPath": details.get("xpath")
+                    })
+                df_match = pd.DataFrame(match_data)
+                
+                def color_match_status(val):
+                    if val == "success": return "color: #00c853; font-weight: bold"
+                    if val == "not_found": return "color: #ff9100; font-weight: bold"
+                    if val == "error": return "color: #ff4b4b; font-weight: bold"
+                    return ""
+                
+                st.dataframe(
+                    df_match.style.map(color_match_status, subset=['Status']),
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No exact matching logs (exact extraction might have been disabled).")
+        else:
+            st.info("No postprocessor logs available.")
+
 # -----------------------------------------------------------------------------
 # Views
 # -----------------------------------------------------------------------------
@@ -181,6 +297,8 @@ def view_type_1_structured(df):
         
         with st.expander("🛠️ Raw Schema/JSON Data"):
             st.json(record.to_dict())
+            
+        render_diagnostics(record)
 
     with col_right:
         render_html_preview(record['filtered_html'])
@@ -225,6 +343,8 @@ def view_type_2_unstructured(df):
             
         st.divider()
         st.json(record['evaluation'])
+        
+        render_diagnostics(record)
 
     with col_r:
         render_html_preview(record['filtered_html'])

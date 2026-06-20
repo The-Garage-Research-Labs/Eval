@@ -48,6 +48,8 @@ class SamplePrediction(dict):
     prediction: Union[str, dict]
     filtered_html: str
     content: str
+    preprocessed_content: str
+    step_logs: dict
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -265,10 +265,14 @@ class AIExtractor:
         filtered_batch = batch.filter(pl.col('score_norm') >= threshold)
 
         if filtered_batch.height == 0:
-            return filtered_batch
+            return filtered_batch.with_columns(
+                pl.lit(None).alias("pruner_log")
+            )
         
         if not self.config.use_llm_pruner:
-            return filtered_batch
+            return filtered_batch.with_columns(
+                pl.lit(None).alias("pruner_log")
+            )
 
         # 1. Prepare Data for Parallel Processing
         # Extract rows as tuples: (chunkcontent, query)
@@ -296,10 +300,16 @@ class AIExtractor:
         
         # 4. Process Results (Light CPU work)
         final_pruned_contents = []
+        pruner_logs = []
 
-        for response, row_xpaths in zip(llm_results, all_rows_xpaths):
+        for response, prompt, row_xpaths in zip(llm_results, prompts, all_rows_xpaths):
             if not response: 
                 final_pruned_contents.append(row_xpaths) 
+                pruner_logs.append({
+                    "prompt": prompt,
+                    "response": "",
+                    "selected_indices": []
+                })
                 continue
             
             match = re.search(r'\[(.*?)\]', response, re.DOTALL)
@@ -317,17 +327,23 @@ class AIExtractor:
                     row_final_list.append(row_xpaths[idx])
             
             final_pruned_contents.append(row_final_list)
+            pruner_logs.append({
+                "prompt": prompt,
+                "response": response,
+                "selected_indices": chosen
+            })
 
-        return filtered_batch.with_columns(
-            pl.Series(name="chunkcontent", values=final_pruned_contents)
-        )
+        return filtered_batch.with_columns([
+            pl.Series(name="chunkcontent", values=final_pruned_contents),
+            pl.Series(name="pruner_log", values=pruner_logs)
+        ])
 
     # ---------------------------------------------------------
     # OPTIMIZED _generate_output
     # ---------------------------------------------------------
     def _generate_output(self, batch: pl.DataFrame) -> pl.DataFrame:
         
-        excluded = {"chunkcontent", "chunkid", "score", "score_norm", "doc_id"}
+        excluded = {"chunkcontent", "chunkid", "score", "score_norm", "doc_id", "pruner_log"}
         
         # Aggregation Logic
         agg_exprs = [
@@ -335,6 +351,9 @@ class AIExtractor:
         ] + [
             pl.col("chunkcontent").alias("chunks")
         ]
+        if "pruner_log" in batch.columns:
+            agg_exprs.append(pl.col("pruner_log").alias("pruner_logs"))
+            
         df_grouped = batch.group_by("doc_id", maintain_order=True).agg(agg_exprs)
 
         # 1. Prepare Data for Parallel Processing
@@ -444,6 +463,12 @@ class AIExtractor:
         norm_df = scores_df.with_columns(
             (pl.col("score") / pl.col("score").max().over("doc_id")).alias("score_norm")
         )
+
+        # Build Reranker logs DataFrame and join it back to norm_df
+        reranker_logs_df = norm_df.group_by("doc_id").agg(
+            pl.struct(["chunkid", "score", "score_norm"]).alias("reranker_chunks")
+        )
+        norm_df = norm_df.join(reranker_logs_df, on="doc_id")
 
         # Step 2: Filter (Optimized Parallel)
         filtered_df = self._filter(norm_df, threshold=self.reranker_classification_threshold)

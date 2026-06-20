@@ -9,13 +9,21 @@ from typing import List, Iterable, Optional, Any, Callable, Dict
 from openai import OpenAI
 from openai import RateLimitError
 
+import threading
+_vllm_init_lock = threading.Lock()
+
 try:
     from vllm import LLM, SamplingParams
     from vllm.lora.request import LoRARequest
+    _vllm_available = True
 except ImportError:
-    raise ImportError("vLLM is not installed. Please install it with 'pip install vllm'")
-import threading
-_vllm_init_lock = threading.Lock()
+    _vllm_available = False
+
+try:
+    import litellm
+    _litellm_available = True
+except ImportError:
+    _litellm_available = False
 
 def retry_on_ratelimit(max_retries=5, base_delay=1.0, max_delay=10.0):
     def deco(fn):
@@ -169,10 +177,94 @@ class NvidiaLLMClient(LLMClient):
     # Optionally override call_batch if the vendor supports true batched calls.
     # For now, we inherit the default implementation from LLMClient.
 
+class LiteLLMClient(LLMClient):
+    """
+    LLMClient implementation backed by LiteLLM, which provides a unified
+    interface to 100+ LLM providers (OpenAI, Anthropic, Gemini, Ollama, etc.).
+
+    Model strings follow LiteLLM conventions, e.g.:
+      - "openai/gpt-4o"
+      - "anthropic/claude-3-5-sonnet-20241022"
+      - "gemini/gemini-2.0-flash"
+      - "ollama/llama3"
+      - "huggingface/mistralai/Mistral-7B-v0.1"
+
+    API keys are read from environment variables by LiteLLM automatically
+    (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.), or you can pass
+    ``api_key`` / ``api_base`` in the config dict to override.
+    """
+
+    def __init__(self, config: dict):
+        if not _litellm_available:
+            raise ImportError(
+                "litellm is not installed. Install it with: pip install litellm"
+            )
+        super().__init__(config)
+
+        self.model_name: str = config.get("model_name", "openai/gpt-4o-mini")
+
+        # Optional overrides (useful for local / proxy deployments)
+        self.api_key: Optional[str] = config.get("api_key") or None
+        self.api_base: Optional[str] = config.get("api_base") or None
+
+        gen_conf = config.get("generation_config", {})
+        self.temperature: float = gen_conf.get("temperature", 0.0)
+        self.top_p: float = gen_conf.get("top_p", 1.0)
+        self.max_tokens: int = gen_conf.get("max_tokens", 2048)
+        self.stop: Optional[List[str]] = gen_conf.get("stop") or None
+
+        # Extra kwargs forwarded verbatim to litellm.completion (e.g. timeout, seed)
+        self.extra_params: Dict[str, Any] = config.get("extra_params", {})
+
+        # Silence verbose litellm logging unless the caller opts in
+        if not config.get("verbose", False):
+            litellm.suppress_debug_info = True
+            litellm.set_verbose = False
+
+    def set_model(self, model_name: str):
+        self.model_name = model_name
+
+    @retry_on_ratelimit(max_retries=20, base_delay=0.5, max_delay=10.0)
+    def call_api(self, prompt: str, **kwargs) -> str:
+        """
+        Call the LLM via LiteLLM with a single chat-style prompt.
+
+        kwargs are merged with the instance-level generation config and
+        forwarded to litellm.completion (call-time values take priority).
+        """
+        call_kwargs: Dict[str, Any] = {
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "max_tokens": self.max_tokens,
+            **self.extra_params,
+            **kwargs,  # caller overrides win
+        }
+        if self.stop is not None:
+            call_kwargs.setdefault("stop", self.stop)
+        if self.api_key is not None:
+            call_kwargs["api_key"] = self.api_key
+        if self.api_base is not None:
+            call_kwargs["api_base"] = self.api_base
+
+        response = litellm.completion(
+            model=self.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            **call_kwargs,
+        )
+        return response.choices[0].message.content
+
+    # call_batch is inherited from LLMClient (ThreadPoolExecutor-based parallel calls).
+    # Override here if you need async or streaming batch support in the future.
+
+
 class VLLMClient(LLMClient):
     def __init__(self, config: dict):
+        if not _vllm_available:
+            raise ImportError(
+                "vLLM is not installed. Install it with: pip install vllm"
+            )
         super().__init__(config)
-        
+
         model_name = config.get("model_name")
         if not model_name:
             raise ValueError("model_name must be provided in the config for VLLMClient")

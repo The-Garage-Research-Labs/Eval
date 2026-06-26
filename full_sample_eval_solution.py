@@ -26,7 +26,7 @@ import multiprocessing as mp
 ######################################## CONSTANTS
 # EXPERIMENT_NAME = "pruner_best_model"
 # EXPERIMENT_NAME = "pruner_trying"
-EXPERIMENT_NAME = "llm-ablation"
+EXPERIMENT_NAME = "error_analysis"
 
 SWDE_DOMAINS = {
     "auto": 17923,
@@ -38,10 +38,10 @@ SWDE_DOMAINS = {
     "movie": 20000,
     "restaurant": 20000
 }
-SWDE_SAMPLES = 250
+SWDE_SAMPLES = 50
 WEBSRC_TOTAL = 50000
 WEBSRC_SAMPLES = 100
-BATCH_SIZE = 50
+BATCH_SIZE = 10
 SEED = 42
 USE_PRUNER = True  
 ########################################## CONFIG
@@ -52,6 +52,7 @@ for dom , val in SWDE_DOMAINS.items():
     dataset_configs.append(SWDEConfig(
         local_dir="/home/abdo/PAPER/Eval/data/swde/hf_SWDE",
         indices=list(range(0,val,int(val/SWDE_SAMPLES))),  # Use a subset of the dataset for
+        # indices=list(range(0,1000,25)), # Single sample for rapid verification
         domain=dom,
         batch_size=BATCH_SIZE
     ))
@@ -183,6 +184,22 @@ INSTRUCTIONS:
 5. If the query is boolean, respond with yes or no.
 6. Choose the most relevant information if multiple answers exist.
 
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+OUTPUT THE ANSWER INSIDE A JSON STRUCTURE
+
+REASON
+REASON
+REASON
+REASON
+REASON
+REASON
+
 OUTPUT FORMAT:
 REASONING: "The reasoning behind the answer"
 {{"answer": "The extracted text or synthesized answer"}}
@@ -207,7 +224,7 @@ RULES:
 
 OUTPUT FORMAT:
 REASONING: "The reasoning behind the answer"
-{{json filled schema}}
+{{json filled schema"}}
 """,
 classification_prompt_template= (
             "You are a precision HTML content reranker. Your task is to evaluate HTML chunks "

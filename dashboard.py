@@ -10,6 +10,9 @@ import numpy as np
 from collections import Counter, defaultdict
 import difflib
 import re
+import string
+import textwrap
+import html as html_lib
 
 # -----------------------------------------------------------------------------
 # Configuration & Styles
@@ -240,6 +243,105 @@ def load_ndjson_from_path(path: str) -> List[Dict[str, Any]]:
     return data
 
 
+def squad_normalize_answer(s: str) -> str:
+    """SQuAD-style normalization: lower, remove punctuation, articles, extra whitespace.
+    Copied from html_eval/util/eval_util.py to avoid import."""
+    if s is None:
+        return ""
+    def remove_articles(text: str) -> str:
+        return re.sub(r'\b(a|an|the)\b', ' ', text)
+    def white_space_fix(text: str) -> str:
+        return ' '.join(text.split())
+    def remove_punc(text: str) -> str:
+        exclude = set(string.punctuation)
+        return ''.join(ch for ch in text if ch not in exclude)
+    def lower(text: str) -> str:
+        return text.lower()
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+
+def clean_gt_text(x: str) -> str:
+    """Normalize a single GT/pred string the same way matcher._normalize_gt does.
+    Copied from html_eval/eval/matcher.py to avoid import.
+    - HTML unescaping (&amp; -> &, &nbsp; -> ' ')
+    - Dedenting multi-line text
+    - Converting non-breaking spaces to normal spaces
+    - Collapsing multiple spaces and stripping
+    """
+    if not isinstance(x, str):
+        return x
+    x = textwrap.dedent(x)          # remove indentation
+    x = html_lib.unescape(x)        # decode &amp;, &lt;, etc.
+    x = x.replace('\xa0', ' ')      # non-breaking space -> normal space
+    x = re.sub(r'\s+', ' ', x).strip()  # normalize whitespace
+    return x
+
+
+def is_null_value(v: Any) -> bool:
+    """Return True if v represents a null/missing value.
+    Handles: None, NaN, '<NULL>', 'MISSING', 'none', 'null', 'n/a', '', 'na', etc.
+    Case-insensitive. Mirrors eval_util.is_not_null logic.
+    """
+    if v is None:
+        return True
+    try:
+        if pd.isna(v):
+            return True
+    except Exception:
+        pass
+    if isinstance(v, (list, tuple)):
+        return len(v) == 0
+    s = str(v).strip()
+    # Check raw form first (catches <NULL>, MISSING, etc.)
+    if s.upper() in ('<NULL>', 'MISSING', 'NULL', 'NONE', 'N/A', 'NA', ''):
+        return True
+    # Check after squad normalization (strips punctuation like < >)
+    return squad_normalize_answer(s) in ('null', 'missing', 'none', 'na', '')
+
+
+def normalize_gt_candidates(gt: Any) -> List[str]:
+    """Turn a GT value into a list of cleaned candidate strings.
+    Mirrors matcher._normalize_gt logic.
+    """
+    if isinstance(gt, list):
+        items = gt
+    elif isinstance(gt, str):
+        try:
+            evaluated = ast.literal_eval(gt)
+            if isinstance(evaluated, list):
+                items = evaluated
+            else:
+                items = [evaluated]
+        except Exception:
+            items = [gt]
+    else:
+        items = [gt]
+
+    return [clean_gt_text(it) for it in items if not is_null_value(it)]
+
+
+def compute_fuzzy_score(gt: str, pred: str) -> float:
+    """Compute normalized fuzzy similarity ratio between ground truth and prediction.
+    Both sides are cleaned via clean_gt_text (HTML unescape, dedent, whitespace collapse)
+    then normalized via squad_normalize_answer (lower, remove punc/articles).
+    """
+    if not isinstance(gt, str):
+        gt = str(gt)
+    if not isinstance(pred, str):
+        pred = str(pred)
+
+    gt_norm = squad_normalize_answer(clean_gt_text(gt))
+    pred_norm = squad_normalize_answer(clean_gt_text(pred))
+
+    # Post-normalize null forms: angle brackets are stripped by squad_normalize,
+    # so '<NULL>' -> 'null', 'n/a' -> 'na', 'MISSING' -> 'missing'
+    NULL_NORM = ('null', 'missing', 'none', 'na', '')
+    if gt_norm in NULL_NORM and pred_norm in NULL_NORM:
+        return 1.0 if gt_norm == pred_norm else 0.0
+
+    return difflib.SequenceMatcher(None, gt_norm, pred_norm).ratio()
+
+
 def safe_parse_gt(gt_val):
     if isinstance(gt_val, (dict, list)):
         return gt_val
@@ -350,6 +452,30 @@ class ErrorAnalyzer:
         # Extract source site from ID (e.g., "aol_0000" -> "aol")
         self.df['source_site'] = self.df['id'].apply(lambda x: '_'.join(str(x).split('_')[:-1]) if '_' in str(x) else str(x))
         
+        # Compute fuzzy matching scores
+        fuzzy_scores = {}
+        for field in self.fields:
+            field_scores = []
+            for _, row in self.df.iterrows():
+                gt = safe_parse_gt(row.get('ground_truth', {}))
+                pred = row.get('prediction', {})
+                
+                gt_val = gt.get(field, 'MISSING') if isinstance(gt, dict) else 'MISSING'
+                pred_val = pred.get(field, 'MISSING') if isinstance(pred, dict) else 'MISSING'
+                
+                if isinstance(gt_val, list):
+                    display_gt = clean_gt_text(gt_val[0]) if gt_val else 'MISSING'
+                else:
+                    display_gt = clean_gt_text(str(gt_val))
+                
+                display_pred = str(pred_val) if pred_val is not None else 'null'
+                
+                field_scores.append(compute_fuzzy_score(display_gt, display_pred))
+            fuzzy_scores[field] = field_scores
+        
+        self.fuzzy_scores_df = pd.DataFrame(fuzzy_scores, index=self.df.index)
+        self.field_fuzzy = self.fuzzy_scores_df.mean().to_dict()
+        
         # Error patterns: which field combinations fail together
         self.error_patterns = self._compute_error_patterns(eval_df)
         
@@ -357,9 +483,12 @@ class ErrorAnalyzer:
         self.site_accuracy = {}
         for site, group in self.df.groupby('source_site'):
             site_eval = eval_df.loc[group.index]
+            site_fuzzy = self.fuzzy_scores_df.loc[group.index]
             self.site_accuracy[site] = {
                 'overall': site_eval.values.mean(),
                 'fields': site_eval.mean().to_dict(),
+                'fuzzy_overall': site_fuzzy.values.mean(),
+                'fuzzy_fields': site_fuzzy.mean().to_dict(),
                 'count': len(group)
             }
     
@@ -417,29 +546,36 @@ class ErrorAnalyzer:
 
 def classify_error(gt: str, pred: str) -> str:
     """Classify the type of extraction error."""
-    if pred in ('N/A', 'None', 'null', '', 'MISSING'):
+    gt_clean  = clean_gt_text(gt)  if isinstance(gt, str)  else str(gt)
+    pred_clean = clean_gt_text(pred) if isinstance(pred, str) else str(pred)
+
+    gt_null   = is_null_value(gt_clean)
+    pred_null = is_null_value(pred_clean)
+
+    if pred_null and not gt_null:
         return '🚫 Missing Extraction'
-    if gt in ('<NULL>', 'N/A', 'None', 'null', ''):
+    if gt_null and not pred_null:
         return '👻 Hallucination (GT is null)'
-    
+    if gt_null and pred_null:
+        return '✅ Both Null'
+
     # Normalize for comparison
-    gt_norm = gt.lower().strip()
-    pred_norm = pred.lower().strip()
-    
+    gt_norm   = squad_normalize_answer(gt_clean)
+    pred_norm = squad_normalize_answer(pred_clean)
+
     if gt_norm == pred_norm:
         return '✅ Exact Match (eval bug?)'
     if gt_norm in pred_norm:
         return '📏 Over-extraction (superset)'
     if pred_norm in gt_norm:
         return '✂️ Under-extraction (subset)'
-    
-    # Check similarity
+
     ratio = difflib.SequenceMatcher(None, gt_norm, pred_norm).ratio()
     if ratio > 0.7:
         return '🔄 Near-miss (formatting)'
     if ratio > 0.4:
         return '🎯 Partial overlap'
-    
+
     return '❌ Completely wrong'
 
 
@@ -530,9 +666,9 @@ def render_field_comparison(record: Dict, eval_data: Dict):
         
         # Handle list ground truths (SWDE format)
         if isinstance(gt_val, list):
-            display_gt = gt_val[0] if gt_val else 'MISSING'
+            display_gt = clean_gt_text(gt_val[0]) if gt_val else 'MISSING'
         else:
-            display_gt = str(gt_val)
+            display_gt = clean_gt_text(str(gt_val))
         
         display_pred = str(pred_val) if pred_val is not None else 'null'
         
@@ -547,7 +683,9 @@ def render_field_comparison(record: Dict, eval_data: Dict):
             status_class = "status-partial"
             icon = "⚠️"
         
-        with st.expander(f"{icon} **{field}** — Score: {score}", expanded=(score != 1)):
+        fuzzy_score = compute_fuzzy_score(display_gt, display_pred)
+        
+        with st.expander(f"{icon} **{field}** — Score: {score} | Fuzzy Match: {fuzzy_score:.1%}", expanded=(score != 1)):
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("**🎯 Ground Truth**")
@@ -555,6 +693,8 @@ def render_field_comparison(record: Dict, eval_data: Dict):
             with c2:
                 st.markdown("**🤖 Prediction**")
                 st.code(display_pred, language=None)
+            
+            render_score_bar(fuzzy_score, "Fuzzy Match Score")
             
             if score != 1:
                 error_type = classify_error(display_gt, display_pred)
@@ -832,17 +972,19 @@ def view_overview(analyzer: ErrorAnalyzer, df: pd.DataFrame):
     eval_df = analyzer.eval_df
     
     # Top metrics row
-    m1, m2, m3, m4, m5 = st.columns(5)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     global_acc = eval_df.values.mean()
+    global_fuzzy = analyzer.fuzzy_scores_df.values.mean()
     perfect = len(df[eval_df.sum(axis=1) == len(eval_df.columns)])
     zero_acc = len(df[eval_df.sum(axis=1) == 0])
     avg_errors = eval_df.shape[1] - eval_df.sum(axis=1).mean()
     
     m1.metric("Total Records", len(df))
     m2.metric("Global Accuracy", f"{global_acc:.1%}")
-    m3.metric("Perfect Records", f"{perfect} ({perfect/len(df):.0%})")
-    m4.metric("Zero-Accuracy", f"{zero_acc}")
-    m5.metric("Avg Errors/Doc", f"{avg_errors:.2f}")
+    m3.metric("Avg Fuzzy Match", f"{global_fuzzy:.1%}")
+    m4.metric("Perfect Records", f"{perfect} ({perfect/len(df):.0%})")
+    m5.metric("Zero-Accuracy", f"{zero_acc}")
+    m6.metric("Avg Errors/Doc", f"{avg_errors:.2f}")
     
     st.markdown("---")
     
@@ -850,28 +992,35 @@ def view_overview(analyzer: ErrorAnalyzer, df: pd.DataFrame):
     col_chart, col_dist = st.columns([1.2, 1])
     
     with col_chart:
-        st.subheader("📊 Field Accuracy Breakdown")
-        field_acc = eval_df.mean().sort_values(ascending=True)
+        st.subheader("📊 Field Accuracy vs. Fuzzy Match Breakdown")
+        field_acc = eval_df.mean()
+        field_fuzzy = analyzer.fuzzy_scores_df.mean()
+        
+        plot_df = pd.DataFrame({
+            'Field': field_acc.index,
+            'Strict Accuracy': field_acc.values,
+            'Fuzzy Match Score': [field_fuzzy[f] for f in field_acc.index]
+        }).sort_values('Strict Accuracy', ascending=True)
+        
+        melted_df = plot_df.melt(id_vars='Field', var_name='Metric', value_name='Score')
         
         fig = px.bar(
-            x=field_acc.values,
-            y=field_acc.index,
+            melted_df,
+            x='Score',
+            y='Field',
+            color='Metric',
+            barmode='group',
             orientation='h',
-            labels={'x': 'Accuracy', 'y': 'Field'},
-            color=field_acc.values,
-            color_continuous_scale=[[0, '#ff4b4b'], [0.5, '#ff9100'], [0.8, '#ffd600'], [1, '#00c853']],
-            range_color=[0, 1],
+            color_discrete_map={
+                'Strict Accuracy': '#ff4b4b',
+                'Fuzzy Match Score': '#667eea'
+            },
+            labels={'Score': 'Score', 'Field': 'Field'},
         )
         fig.update_layout(
-            height=max(300, len(field_acc) * 45),
+            height=max(300, len(field_acc) * 55),
             margin=dict(l=20, r=20, t=10, b=20),
-            showlegend=False,
-            coloraxis_showscale=False,
-        )
-        fig.update_traces(
-            text=[f"{v:.1%}" for v in field_acc.values],
-            textposition='outside',
-            textfont=dict(size=12, color='white')
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         )
         st.plotly_chart(fig, width="stretch")
     
@@ -955,12 +1104,14 @@ def view_field_deep_dive(analyzer: ErrorAnalyzer, df: pd.DataFrame):
     )
     
     analysis = analyzer.get_field_confusion(selected_field)
+    field_fuzzy_score = analyzer.field_fuzzy.get(selected_field, 0.0)
     
     # Metrics
-    mc1, mc2, mc3 = st.columns(3)
+    mc1, mc2, mc3, mc4 = st.columns(4)
     mc1.metric("Total Errors", analysis['total_errors'])
     mc2.metric("Error Rate", f"{analysis['error_rate']:.1%}")
-    mc3.metric("Sites Affected", len(analysis['error_by_site']))
+    mc3.metric("Avg Fuzzy Match", f"{field_fuzzy_score:.1%}")
+    mc4.metric("Sites Affected", len(analysis['error_by_site']))
     
     col_issues, col_sites = st.columns([1, 1])
     
@@ -1021,14 +1172,22 @@ def view_field_deep_dive(analyzer: ErrorAnalyzer, df: pd.DataFrame):
         if isinstance(gt_val, list):
             gt_val = gt_val[0] if gt_val else 'N/A'
         
-        error_type = classify_error(str(gt_val), str(pred_val))
+        display_gt = clean_gt_text(str(gt_val))
+        display_pred = str(pred_val) if pred_val is not None else 'null'
         
-        with st.expander(f"📌 {row['id']} — {error_type}"):
+        error_type = classify_error(display_gt, display_pred)
+        fuzzy_score = compute_fuzzy_score(display_gt, display_pred)
+        
+        with st.expander(f"📌 {row['id']} — {error_type} (Fuzzy Match: {fuzzy_score:.1%})"):
             c1, c2 = st.columns(2)
-            c1.markdown("**Ground Truth**")
-            c1.code(str(gt_val), language=None)
-            c2.markdown("**Prediction**")
-            c2.code(str(pred_val), language=None)
+            with c1:
+                st.markdown("**Ground Truth**")
+                st.code(display_gt, language=None)
+            with c2:
+                st.markdown("**Prediction**")
+                st.code(display_pred, language=None)
+            
+            render_score_bar(fuzzy_score, "Fuzzy Match Score")
 
 
 def view_record_inspector(df: pd.DataFrame, file_type: str):
@@ -1156,11 +1315,20 @@ def view_record_inspector(df: pd.DataFrame, file_type: str):
             st.divider()
             
             # Metrics
+            fuzzy_score = compute_fuzzy_score(record.get('ground_truth', ''), record.get('prediction', ''))
+            
+            st.markdown("### Similarity Metrics")
+            render_score_bar(fuzzy_score, "Fuzzy Match Score")
+            st.divider()
+            
             if eval_data:
-                ec1, ec2, ec3 = st.columns(3)
+                ec1, ec2, ec3, ec4 = st.columns(4)
                 ec1.metric("F1", f"{eval_data.get('f1', 0):.3f}")
                 ec2.metric("Precision", f"{eval_data.get('precision', 0):.3f}")
                 ec3.metric("Recall", f"{eval_data.get('recall', 0):.3f}")
+                ec4.metric("Fuzzy Match", f"{fuzzy_score:.1%}")
+            else:
+                st.metric("Fuzzy Match Score", f"{fuzzy_score:.1%}")
             
             render_diagnostics(record)
         
@@ -1173,11 +1341,20 @@ def view_type2_overview(df: pd.DataFrame):
     """Overview for QA / text generation results."""
     eval_df = pd.json_normalize(df['evaluation'])
     
-    m1, m2, m3, m4 = st.columns(4)
+    # Compute fuzzy matching scores
+    fuzzy_scores = []
+    for _, row in df.iterrows():
+        gt_val = str(row.get('ground_truth', ''))
+        pred_val = str(row.get('prediction', ''))
+        fuzzy_scores.append(compute_fuzzy_score(gt_val, pred_val))
+    avg_fuzzy = np.mean(fuzzy_scores) if fuzzy_scores else 0.0
+    
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total Samples", len(df))
     m2.metric("Avg F1", f"{eval_df['f1'].mean():.3f}")
     m3.metric("Avg Precision", f"{eval_df['precision'].mean():.3f}")
     m4.metric("Avg Recall", f"{eval_df['recall'].mean():.3f}")
+    m5.metric("Avg Fuzzy Match", f"{avg_fuzzy:.1%}")
     
     col1, col2 = st.columns(2)
     
@@ -1198,6 +1375,535 @@ def view_type2_overview(df: pd.DataFrame):
                                     marker_color='#ff9100', name='Recall'), row=1, col=2)
         fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20), showlegend=False)
         st.plotly_chart(fig, width="stretch")
+
+
+# -----------------------------------------------------------------------------
+# Pipeline Analysis View
+# -----------------------------------------------------------------------------
+
+def _parse_step_logs(record) -> dict:
+    """Safely parse step_logs from a record (handles str, dict, None)."""
+    sl = record.get('step_logs')
+    if sl is None:
+        return {}
+    if isinstance(sl, str):
+        try:
+            sl = json.loads(sl)
+        except Exception:
+            try:
+                sl = ast.literal_eval(sl)
+            except Exception:
+                return {}
+    return sl if isinstance(sl, dict) else {}
+
+
+def view_pipeline_analysis(df: pd.DataFrame):
+    """Aggregate pipeline-step-level error analysis driven by step_logs."""
+    # Check if step_logs are available
+    has_step_logs = 'step_logs' in df.columns and df['step_logs'].notna().any()
+    if not has_step_logs:
+        st.warning("⚠️ No `step_logs` data found in the loaded records. "
+                   "Load data in **Metrics + Predictions (full)** mode, or re-run evaluation "
+                   "with the latest `html_eval` package to include step_logs in metric output.")
+        return
+
+    # Parse all step_logs into a working list
+    parsed_logs = df.apply(lambda row: _parse_step_logs(row), axis=1)
+    logs_available = parsed_logs.apply(lambda x: len(x) > 0).sum()
+
+    st.caption(f"📋 Step logs available for **{logs_available}** / {len(df)} records")
+
+    # ======================== A. PIPELINE FUNNEL & FORENSICS ========================
+    st.subheader("🔻 Pipeline Funnels & Error Forensics")
+    st.caption("Compare execution flow completion against the retention of target ground truth data.")
+
+    funnel_data = {
+        'Total Records': len(df),
+        'Preprocessed': 0,
+        'Reranked': 0,
+        'Extracted': 0,
+        'Postprocessed': 0,
+        'Fully Correct': 0,
+    }
+
+    for idx, sl in parsed_logs.items():
+        if sl.get('preprocessor'):
+            funnel_data['Preprocessed'] += 1
+        if sl.get('reranker') or sl.get('preprocessor'):  # reranker may be skipped
+            funnel_data['Reranked'] += 1
+        if sl.get('extractor'):
+            funnel_data['Extracted'] += 1
+        post = sl.get('postprocessor')
+        if post and not post.get('error'):
+            funnel_data['Postprocessed'] += 1
+
+    # Fully correct = all eval scores are 1
+    if 'evaluation' in df.columns:
+        for _, row in df.iterrows():
+            ev = row.get('evaluation', {})
+            if isinstance(ev, dict) and ev:
+                if all(v == 1 for v in ev.values()):
+                    funnel_data['Fully Correct'] += 1
+
+    # Ground Truth Survival Funnel computation
+    is_structured = "Type 1" in detect_file_type(df.iloc[0].to_dict())
+    
+    total_gt_fields = 0
+    in_raw_count = 0
+    in_prep_count = 0
+    in_prompt_count = 0
+    in_response_count = 0
+    in_pred_count = 0
+
+    for idx, row in df.iterrows():
+        gt = safe_parse_gt(row.get('ground_truth', {}))
+        eval_scores = row.get('evaluation', {})
+        sl = parsed_logs.get(idx, {})
+        
+        # Get raw content - normalize HTML entities so &nbsp; etc. don't cause false misses
+        raw_content = clean_gt_text(str(row.get('content', '') or row.get('filtered_html', '') or ''))
+        
+        # Get preprocessed content
+        prep_content = clean_gt_text(str(row.get('preprocessed_content', '') or sl.get('preprocessor', {}).get('cleaned_content', '') or ''))
+        if not prep_content:
+            prep_content = raw_content  # Fallback
+            
+        # Get prompt sent to extractor
+        prompt = clean_gt_text(str(sl.get('extractor', {}).get('prompt', '') or ''))
+        
+        # Get LLM response
+        llm_response = clean_gt_text(str(sl.get('extractor', {}).get('raw_response', '') or ''))
+        
+        # Check structured fields
+        if is_structured and isinstance(gt, dict) and gt:
+            for field, gt_val in gt.items():
+                # Use all candidates from list GT, or wrap scalar in list
+                if isinstance(gt_val, list):
+                    candidates = [clean_gt_text(str(v)) for v in gt_val if v is not None]
+                else:
+                    candidates = [clean_gt_text(str(gt_val))]
+                
+                # Filter empty / null candidates
+                candidates = [
+                    c for c in candidates
+                    if not is_null_value(c)
+                ]
+                if not candidates:
+                    continue
+                
+                total_gt_fields += 1
+                # A GT value is considered present at a stage if ANY candidate matches
+                in_raw  = any(c.lower() in raw_content.lower()     for c in candidates)
+                in_prep = any(c.lower() in prep_content.lower()    for c in candidates)
+                in_prompt   = any(c.lower() in prompt.lower()      for c in candidates)
+                in_response = any(c.lower() in llm_response.lower() for c in candidates)
+                
+                is_correct = eval_scores.get(field, 0) == 1 if isinstance(eval_scores, dict) else False
+                
+                if in_raw:      in_raw_count += 1
+                if in_prep:     in_prep_count += 1
+                if in_prompt:   in_prompt_count += 1
+                if in_response: in_response_count += 1
+                if is_correct:  in_pred_count += 1
+        else:
+            # Type 2 / QA dataset or string ground truth
+            display_gt = clean_gt_text(str(gt)).strip()
+            if display_gt and not is_null_value(display_gt):
+                total_gt_fields += 1
+                gt_lower = display_gt.lower()
+                
+                in_raw = gt_lower in raw_content.lower()
+                in_prep = gt_lower in prep_content.lower()
+                in_prompt = gt_lower in prompt.lower()
+                in_response = gt_lower in llm_response.lower()
+                
+                is_correct = eval_scores.get('f1', 0) >= 0.8 if isinstance(eval_scores, dict) else False
+                
+                if in_raw: in_raw_count += 1
+                if in_prep: in_prep_count += 1
+                if in_prompt: in_prompt_count += 1
+                if in_response: in_response_count += 1
+                if is_correct: in_pred_count += 1
+
+    col_fun1, col_fun2 = st.columns(2)
+    
+    with col_fun1:
+        st.subheader("🔻 Pipeline Execution Funnel")
+        st.caption("Tracks how many records survive each pipeline stage code execution.")
+        
+        stages_exec = list(funnel_data.keys())
+        counts_exec = list(funnel_data.values())
+        colors_exec = ['#667eea', '#7c6dd8', '#9b59b6', '#e67e22', '#2ecc71', '#00c853']
+        
+        fig_exec = go.Figure(go.Funnel(
+            y=stages_exec,
+            x=counts_exec,
+            textinfo="value+percent initial",
+            marker=dict(color=colors_exec[:len(stages_exec)]),
+            connector=dict(line=dict(color="rgba(255,255,255,0.1)", width=1)),
+        ))
+        fig_exec.update_layout(
+            height=320,
+            margin=dict(l=20, r=20, t=10, b=20),
+            font=dict(size=12),
+        )
+        st.plotly_chart(fig_exec, use_container_width=True)
+        
+    with col_fun2:
+        st.subheader("🔑 Ground Truth Retention Funnel")
+        st.caption("Tracks the exact stage where the ground truth text was dropped by the pipeline.")
+        
+        stages_gt = [
+            'Total Gold Values',
+            'Present in Raw HTML',
+            'Survived Preprocess',
+            'Survived Rerank (Context)',
+            'Survived Extract (LLM)',
+            'Survived Normalize (Correct)'
+        ]
+        counts_gt = [
+            total_gt_fields,
+            in_raw_count,
+            in_prep_count,
+            in_prompt_count,
+            in_response_count,
+            in_pred_count
+        ]
+        colors_gt = ['#4f46e5', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
+        
+        fig_gt = go.Figure(go.Funnel(
+            y=stages_gt,
+            x=counts_gt,
+            textinfo="value+percent initial",
+            marker=dict(color=colors_gt),
+            connector=dict(line=dict(color="rgba(255,255,255,0.1)", width=1)),
+        ))
+        fig_gt.update_layout(
+            height=320,
+            margin=dict(l=20, r=20, t=10, b=20),
+            font=dict(size=12),
+        )
+        st.plotly_chart(fig_gt, use_container_width=True)
+
+    st.markdown("### 🔍 Ground Truth Loss Analysis")
+    st.caption("Breakdown of data drop-offs by stage across the pipeline.")
+    
+    dt1, dt2, dt3, dt4, dt5 = st.columns(5)
+    
+    # Not in raw
+    not_in_raw = total_gt_fields - in_raw_count
+    pct_not_in_raw = (not_in_raw / max(total_gt_fields, 1)) * 100
+    dt1.metric("Absent in Raw HTML", f"{not_in_raw}", f"-{pct_not_in_raw:.1f}%", delta_color="off")
+    
+    # Lost in HTML cleaning
+    lost_prep = in_raw_count - in_prep_count
+    pct_prep = (lost_prep / max(in_raw_count, 1)) * 100
+    dt2.metric("Lost in HTML Cleaning", f"{lost_prep}", f"-{pct_prep:.1f}%", delta_color="inverse")
+    
+    # Lost in context pruning
+    lost_rerank = in_prep_count - in_prompt_count
+    pct_rerank = (lost_rerank / max(in_prep_count, 1)) * 100
+    dt3.metric("Lost in Reranking", f"{lost_rerank}", f"-{pct_rerank:.1f}%", delta_color="inverse")
+    
+    # Lost in LLM recall
+    lost_extract = in_prompt_count - in_response_count
+    pct_extract = (lost_extract / max(in_prompt_count, 1)) * 100
+    dt4.metric("Lost in LLM Extraction", f"{lost_extract}", f"-{pct_extract:.1f}%", delta_color="inverse")
+    
+    # Lost in normalization
+    lost_post = in_response_count - in_pred_count
+    pct_post = (lost_post / max(in_response_count, 1)) * 100
+    dt5.metric("Lost in Postprocessing", f"{lost_post}", f"-{pct_post:.1f}%", delta_color="inverse")
+
+    st.markdown("---")
+
+    # ======================== B. PREPROCESSING STATISTICS ========================
+    col_prep, col_extract = st.columns(2)
+
+    with col_prep:
+        st.subheader("📦 Preprocessing Statistics")
+
+        prep_data = []
+        for idx, sl in parsed_logs.items():
+            prep = sl.get('preprocessor')
+            if prep and isinstance(prep, dict):
+                raw_len = prep.get('raw_len', 0)
+                cleaned_len = prep.get('cleaned_len', 0)
+                compression = 1 - (cleaned_len / max(1, raw_len)) if raw_len > 0 else 0
+                prep_data.append({
+                    'id': df.loc[idx, 'id'] if 'id' in df.columns else str(idx),
+                    'raw_len': raw_len,
+                    'cleaned_len': cleaned_len,
+                    'compression': compression,
+                    'num_chunks': prep.get('num_chunks', 0),
+                    'error': prep.get('error'),
+                })
+
+        if prep_data:
+            prep_df = pd.DataFrame(prep_data)
+
+            # Summary metrics
+            pm1, pm2, pm3 = st.columns(3)
+            pm1.metric("Avg Raw Size", f"{prep_df['raw_len'].mean():,.0f} chars")
+            pm2.metric("Avg Cleaned Size", f"{prep_df['cleaned_len'].mean():,.0f} chars")
+            pm3.metric("Avg Compression", f"{prep_df['compression'].mean():.1%}")
+
+            # Size distributions
+            fig = make_subplots(rows=1, cols=2, subplot_titles=("HTML Size Distribution", "Chunk Count Distribution"))
+
+            fig.add_trace(
+                go.Histogram(x=prep_df['raw_len'], name='Raw', marker_color='#ff6b6b', opacity=0.7),
+                row=1, col=1
+            )
+            fig.add_trace(
+                go.Histogram(x=prep_df['cleaned_len'], name='Cleaned', marker_color='#51cf66', opacity=0.7),
+                row=1, col=1
+            )
+            fig.add_trace(
+                go.Histogram(x=prep_df['num_chunks'], name='Chunks', marker_color='#667eea',
+                             nbinsx=max(1, int(prep_df['num_chunks'].max()))),
+                row=1, col=2
+            )
+            fig.update_layout(height=300, margin=dict(l=20, r=20, t=30, b=20), showlegend=True,
+                              legend=dict(orientation='h', yanchor='bottom', y=1.02))
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Preprocessing errors
+            errors = prep_df[prep_df['error'].notna()]
+            if len(errors) > 0:
+                st.error(f"⚠️ {len(errors)} records had preprocessing errors")
+                with st.expander("View preprocessing errors"):
+                    st.dataframe(errors[['id', 'error']], use_container_width=True, hide_index=True)
+        else:
+            st.info("No preprocessor logs available.")
+
+    # ======================== C. EXTRACTION ERROR CATEGORIZATION ========================
+    with col_extract:
+        st.subheader("🤖 Extraction Analysis")
+
+        extract_data = []
+        for idx, sl in parsed_logs.items():
+            ext = sl.get('extractor')
+            if ext and isinstance(ext, dict):
+                raw_resp = ext.get('raw_response', '')
+                # Check if extraction produced valid JSON
+                has_json = bool(re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_resp)) if raw_resp else False
+                if has_json:
+                    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_resp)
+                    try:
+                        json.loads(json_match.group(1))
+                        parse_ok = True
+                    except Exception:
+                        parse_ok = False
+                else:
+                    # Try direct JSON parse
+                    try:
+                        json.loads(raw_resp)
+                        parse_ok = True
+                        has_json = True
+                    except Exception:
+                        parse_ok = False
+
+                extract_data.append({
+                    'id': df.loc[idx, 'id'] if 'id' in df.columns else str(idx),
+                    'has_json_block': has_json,
+                    'json_parseable': parse_ok,
+                    'response_len': len(raw_resp) if raw_resp else 0,
+                })
+
+        if extract_data:
+            ext_df = pd.DataFrame(extract_data)
+
+            em1, em2, em3 = st.columns(3)
+            total_ext = len(ext_df)
+            em1.metric("Total Extractions", total_ext)
+            em2.metric("Valid JSON", f"{ext_df['json_parseable'].sum()} ({ext_df['json_parseable'].mean():.0%})")
+            em3.metric("Parse Failures", f"{(~ext_df['json_parseable']).sum()}")
+
+            # Response length distribution
+            fig = px.histogram(
+                ext_df, x='response_len', nbins=30,
+                title='LLM Response Length Distribution',
+                color_discrete_sequence=['#667eea'],
+                labels={'response_len': 'Response Length (chars)'}
+            )
+            fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Show parse failure examples
+            parse_failures = ext_df[~ext_df['json_parseable']]
+            if len(parse_failures) > 0:
+                st.warning(f"⚠️ {len(parse_failures)} extractions failed JSON parsing")
+                with st.expander(f"View parse failure IDs ({len(parse_failures)} total)"):
+                    st.dataframe(parse_failures[['id', 'has_json_block', 'response_len']],
+                                 use_container_width=True, hide_index=True)
+        else:
+            st.info("No extractor logs available.")
+
+    st.markdown("---")
+
+    # ======================== D. POSTPROCESSOR ALIGNMENT IMPACT ========================
+    st.subheader("⚙️ Postprocessor Alignment Impact")
+    st.caption("Analyze how the exact-match alignment step changes LLM outputs and its effect on final accuracy.")
+
+    alignment_data = []
+    field_status_counts = defaultdict(lambda: defaultdict(int))
+    field_alignment_scores = defaultdict(list)
+    field_drift_counts = defaultdict(lambda: {'drifted': 0, 'unchanged': 0})
+
+    for idx, sl in parsed_logs.items():
+        post = sl.get('postprocessor')
+        if not post or not isinstance(post, dict):
+            continue
+        eml = post.get('exact_match_log')
+        if not eml or not isinstance(eml, dict):
+            continue
+
+        row_eval = df.loc[idx].get('evaluation', {}) if 'evaluation' in df.columns else {}
+
+        for field, details in eml.items():
+            if not isinstance(details, dict):
+                continue
+            status = details.get('status', 'unknown')
+            score = details.get('score', 0)
+            original = str(details.get('original_extracted', ''))
+            aligned = str(details.get('value', ''))
+            eval_score = row_eval.get(field, None) if isinstance(row_eval, dict) else None
+
+            field_status_counts[field][status] += 1
+            field_alignment_scores[field].append(score)
+
+            drifted = original != aligned
+            if drifted:
+                field_drift_counts[field]['drifted'] += 1
+            else:
+                field_drift_counts[field]['unchanged'] += 1
+
+            alignment_data.append({
+                'id': df.loc[idx, 'id'] if 'id' in df.columns else str(idx),
+                'field': field,
+                'status': status,
+                'alignment_score': score,
+                'drifted': drifted,
+                'original': original[:80],
+                'aligned': aligned[:80],
+                'eval_correct': eval_score,
+            })
+
+    if alignment_data:
+        align_df = pd.DataFrame(alignment_data)
+
+        # Per-field status breakdown chart
+        col_status, col_drift = st.columns(2)
+
+        with col_status:
+            st.markdown("**Alignment Status per Field**")
+            status_data = []
+            for field in sorted(field_status_counts.keys()):
+                for status, count in field_status_counts[field].items():
+                    status_data.append({'Field': field, 'Status': status, 'Count': count})
+
+            if status_data:
+                status_df = pd.DataFrame(status_data)
+                color_map = {
+                    'success': '#00c853',
+                    'not_found': '#ff9100',
+                    'error': '#ff4b4b',
+                    'unknown': '#888888'
+                }
+                fig = px.bar(
+                    status_df, x='Field', y='Count', color='Status',
+                    color_discrete_map=color_map,
+                    barmode='stack',
+                    title='Alignment Status Distribution'
+                )
+                fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+        with col_drift:
+            st.markdown("**Alignment Drift per Field**")
+            st.caption("How often does fuzzy matching change the LLM's original extraction?")
+
+            drift_data = []
+            for field in sorted(field_drift_counts.keys()):
+                total = field_drift_counts[field]['drifted'] + field_drift_counts[field]['unchanged']
+                drift_pct = field_drift_counts[field]['drifted'] / max(1, total)
+                drift_data.append({
+                    'Field': field,
+                    'Drift Rate': drift_pct,
+                    'Drifted': field_drift_counts[field]['drifted'],
+                    'Unchanged': field_drift_counts[field]['unchanged'],
+                })
+
+            if drift_data:
+                drift_df = pd.DataFrame(drift_data)
+                fig = px.bar(
+                    drift_df, x='Field', y='Drift Rate',
+                    color='Drift Rate',
+                    color_continuous_scale=[[0, '#00c853'], [0.5, '#ff9100'], [1, '#ff4b4b']],
+                    text=[f"{r['Drifted']}/{r['Drifted']+r['Unchanged']}" for _, r in drift_df.iterrows()],
+                    title='Alignment Drift Rate'
+                )
+                fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20),
+                                  coloraxis_showscale=False)
+                fig.update_traces(textposition='outside')
+                st.plotly_chart(fig, use_container_width=True)
+
+        # Drift impact on accuracy
+        if 'eval_correct' in align_df.columns and align_df['eval_correct'].notna().any():
+            st.markdown("**Alignment Drift vs. Final Accuracy**")
+            st.caption("Did alignment changes help or hurt accuracy?")
+
+            impact_data = align_df[align_df['eval_correct'].notna()].copy()
+            impact_data['Category'] = impact_data.apply(
+                lambda r: ('Drifted → Correct' if r['eval_correct'] == 1 else 'Drifted → Wrong')
+                          if r['drifted']
+                          else ('Unchanged → Correct' if r['eval_correct'] == 1 else 'Unchanged → Wrong'),
+                axis=1
+            )
+
+            impact_counts = impact_data['Category'].value_counts()
+            cat_colors = {
+                'Unchanged → Correct': '#00c853',
+                'Drifted → Correct': '#69f0ae',
+                'Unchanged → Wrong': '#ff8a80',
+                'Drifted → Wrong': '#ff4b4b',
+            }
+
+            fig = px.bar(
+                x=impact_counts.index,
+                y=impact_counts.values,
+                color=impact_counts.index,
+                color_discrete_map=cat_colors,
+                labels={'x': 'Category', 'y': 'Count'},
+                title='Alignment Drift Impact on Final Accuracy'
+            )
+            fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Detailed alignment table
+        with st.expander("📋 Detailed Alignment Data"):
+            display_cols = ['id', 'field', 'status', 'alignment_score', 'drifted', 'original', 'aligned']
+            if 'eval_correct' in align_df.columns:
+                display_cols.append('eval_correct')
+
+            def color_status(val):
+                if val == 'success':
+                    return 'color: #00c853; font-weight: bold'
+                if val == 'not_found':
+                    return 'color: #ff9100; font-weight: bold'
+                if val == 'error':
+                    return 'color: #ff4b4b; font-weight: bold'
+                return ''
+
+            def color_drift(val):
+                return 'color: #ff9100; font-weight: bold' if val else ''
+
+            styled = align_df[display_cols].style.map(color_status, subset=['status'])
+            styled = styled.map(color_drift, subset=['drifted'])
+            st.dataframe(styled, use_container_width=True, hide_index=True, height=400)
+    else:
+        st.info("No postprocessor alignment logs available.")
 
 
 # -----------------------------------------------------------------------------
@@ -1380,9 +2086,10 @@ def main():
     if is_structured and 'evaluation' in df.columns:
         analyzer = ErrorAnalyzer(df)
         
-        tab_overview, tab_fields, tab_inspect, tab_data = st.tabs([
+        tab_overview, tab_fields, tab_pipeline, tab_inspect, tab_data = st.tabs([
             "📊 Overview",
             "🔎 Field Analysis",
+            "🔧 Pipeline Analysis",
             "🔬 Record Inspector",
             "🗃️ Raw Data"
         ])
@@ -1393,6 +2100,9 @@ def main():
         with tab_fields:
             view_field_deep_dive(analyzer, df)
         
+        with tab_pipeline:
+            view_pipeline_analysis(df)
+        
         with tab_inspect:
             view_record_inspector(df, file_type)
         
@@ -1401,14 +2111,18 @@ def main():
                          width="stretch")
     
     elif not is_structured and 'evaluation' in df.columns:
-        tab_overview, tab_inspect, tab_data = st.tabs([
+        tab_overview, tab_pipeline, tab_inspect, tab_data = st.tabs([
             "📊 Overview",
+            "🔧 Pipeline Analysis",
             "🔬 Record Inspector",
             "🗃️ Raw Data"
         ])
         
         with tab_overview:
             view_type2_overview(df)
+        
+        with tab_pipeline:
+            view_pipeline_analysis(df)
         
         with tab_inspect:
             view_record_inspector(df, file_type)

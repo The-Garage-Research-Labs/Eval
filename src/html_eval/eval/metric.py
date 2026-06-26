@@ -140,6 +140,7 @@ class Metric(ABC):
             "prediction": getattr(sample_eval, "prediction", None),
             "filtered_html": getattr(sample_eval, "filtered_html", None),
             "evaluation": getattr(sample_eval, "evaluation", None),
+            "step_logs": getattr(sample_eval, "step_logs", None),
         }
 
     def append_sample_eval(self, sample_eval: SampleEvaluation):
@@ -367,6 +368,7 @@ class TokenF1(Metric):
                 ground_truth=pred.ground_truth,
                 prediction=pred.prediction,
                 filtered_html=getattr(pred, "filtered_html", None),
+                step_logs=getattr(pred, "step_logs", None),
                 evaluation={"f1": float(f1), "precision": float(prec), "recall": float(rec)}
             )
             # append via offload-aware helper
@@ -609,6 +611,7 @@ class PageLevelF1(Metric):
                 ground_truth=pred.ground_truth,
                 prediction=pred.prediction,
                 filtered_html=getattr(pred, "filtered_html", None),
+                step_logs=getattr(pred, "step_logs", None),
                 evaluation=current_sample_eval
             )
 

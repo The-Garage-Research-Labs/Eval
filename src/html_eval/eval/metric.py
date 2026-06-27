@@ -139,6 +139,7 @@ class Metric(ABC):
             "ground_truth": getattr(sample_eval, "ground_truth", None),
             "prediction": getattr(sample_eval, "prediction", None),
             "filtered_html": getattr(sample_eval, "filtered_html", None),
+            "preprocessed_content": getattr(sample_eval, "preprocessed_content", None),
             "evaluation": getattr(sample_eval, "evaluation", None),
             "step_logs": getattr(sample_eval, "step_logs", None),
         }
@@ -368,6 +369,7 @@ class TokenF1(Metric):
                 ground_truth=pred.ground_truth,
                 prediction=pred.prediction,
                 filtered_html=getattr(pred, "filtered_html", None),
+                preprocessed_content=getattr(pred, "preprocessed_content", None),
                 step_logs=getattr(pred, "step_logs", None),
                 evaluation={"f1": float(f1), "precision": float(prec), "recall": float(rec)}
             )
@@ -611,6 +613,7 @@ class PageLevelF1(Metric):
                 ground_truth=pred.ground_truth,
                 prediction=pred.prediction,
                 filtered_html=getattr(pred, "filtered_html", None),
+                preprocessed_content=getattr(pred, "preprocessed_content", None),
                 step_logs=getattr(pred, "step_logs", None),
                 evaluation=current_sample_eval
             )

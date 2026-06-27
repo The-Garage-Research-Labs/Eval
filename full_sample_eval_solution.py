@@ -76,7 +76,8 @@ print(f"Created {len(dataset_configs)} of dataset configs.")
 
 reranker_preprocessor_config = RerankerPreprocessorConfig(
     attr_cutoff_len=5,
-    # chunk_size=100000000, #500 is best after finetuning
+    # chunk_size=100000000, #500 is best after finetuning,
+    # use_clean_rag=False,
     chunk_size=4000, 
     fetch_workers=mp.cpu_count(),
     cpu_workers=mp.cpu_count()

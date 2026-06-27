@@ -486,14 +486,28 @@ def custom_clean_html(html_content: str) -> str:
     # Return normalized HTML string
     return etree.tostring(doc, encoding="unicode", method="html")
 
+# def _remove_comments(doc):
+#     """Remove all HTML comment nodes from the document tree."""
+#     comments = doc.xpath('//comment()')
+#     for comment in comments:
+#         parent = comment.getparent()
+#         if parent is not None:
+#             parent.remove(comment)
+
 def _remove_comments(doc):
     """Remove all HTML comment nodes from the document tree."""
     comments = doc.xpath('//comment()')
     for comment in comments:
         parent = comment.getparent()
         if parent is not None:
+            tail = comment.tail
+            if tail:
+                previous = comment.getprevious()
+                if previous is not None:
+                    previous.tail = (previous.tail or "") + tail
+                else:
+                    parent.text = (parent.text or "") + tail
             parent.remove(comment)
-
 
 def _remove_nodes_by_tag(doc, tag_names):
     """Remove all elements with specified tag names.

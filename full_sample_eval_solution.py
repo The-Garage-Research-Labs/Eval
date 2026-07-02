@@ -38,10 +38,10 @@ SWDE_DOMAINS = {
     "movie": 20000,
     "restaurant": 20000
 }
-SWDE_SAMPLES = 50
+SWDE_SAMPLES = 200
 WEBSRC_TOTAL = 50000
 WEBSRC_SAMPLES = 100
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 SEED = 42
 USE_PRUNER = True  
 ########################################## CONFIG

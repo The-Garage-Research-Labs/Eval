@@ -6,13 +6,19 @@ from typing import Any, Dict, List, Optional, Iterable, Tuple, Union
 import torch
 from html_eval.core.experiment import Experiment
 from html_eval.configs.pipeline_config import RerankerExtractorConfig
-from html_eval.util.html_util import merge_html_chunks, extract_visible_xpaths_leaves, merge_xpaths_to_html, clean_html, SmartHTMLProcessor
+from html_eval.util.html_util import merge_html_chunks, extract_visible_xpaths_leaves, merge_xpaths_to_html, clean_html, SmartHTMLProcessor, transform_tables_in_content
 from html_eval.util.json_util import is_schema
 import ast
 import concurrent.futures
 import time
 import re
 from concurrent.futures import ProcessPoolExecutor
+
+def count_tokens(text: str) -> int:
+    if not text:
+        return 0
+    # Simple, extremely fast approximation: ~4 characters per token
+    return len(text) // 4
 
 # ==============================================================================
 # 1. STANDALONE HELPER FUNCTIONS (Moved out of class to allow Pickling)
@@ -106,16 +112,19 @@ def generate_pruner_prompt(xpath_content_pair_ls: List, query: str, prompt_templ
 def _worker_filter_prep(args):
     """
     Worker for _filter.
-    Receives: (chunk_content, query, template_string)
+    Receives: (chunk_content, query, template_string, skip_pruner)
     Returns: (chunk_xpaths_object, prompt_string)
     """
-    row_content, row_query, prompt_template = args
+    row_content, row_query, prompt_template, skip_pruner = args
     
     # 1. Instantiate Processor inside the worker (avoid pickling the object)
     processor = SmartHTMLProcessor() 
     
     # 2. Heavy CPU: Parse HTML
     chunk_xpaths = processor.extract_chunks(row_content)
+    
+    if skip_pruner:
+        return chunk_xpaths, None
     
     # 3. Prepare data for prompt generation
     xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
@@ -274,14 +283,31 @@ class AIExtractor:
                 pl.lit(None).alias("pruner_log")
             )
 
+        # Determine which doc_ids should skip pruning based on token threshold
+        skip_pruning_docs = set()
+        threshold_val = getattr(self.config, "pruner_token_threshold", None)
+        if threshold_val is not None and threshold_val > 0:
+            if "doc_id" in batch.columns:
+                content_col = "cleaned_content" if "cleaned_content" in batch.columns else ("content" if "content" in batch.columns else None)
+                if content_col:
+                    unique_docs = batch.select(["doc_id", content_col]).unique(subset=["doc_id"])
+                    for doc_id, content_val in unique_docs.iter_rows():
+                        if content_val:
+                            num_tokens = count_tokens(content_val)
+                            if num_tokens <= threshold_val:
+                                skip_pruning_docs.add(doc_id)
+
         # 1. Prepare Data for Parallel Processing
-        # Extract rows as tuples: (chunkcontent, query)
-        rows_data = filtered_batch.select(["chunkcontent", "query"]).rows()
+        # Extract rows as tuples: (chunkcontent, query, doc_id)
+        rows_data = filtered_batch.select(["chunkcontent", "query", "doc_id"]).rows()
         
-        # Prepare arguments: (content, query, template_string)
+        # Prepare arguments: (content, query, template_string, skip_pruner)
         # Note: We pass the template STRING, not self or config.
         template_str = self.config.llm_pruner_prompt
-        worker_args = [(r[0], r[1], template_str) for r in rows_data]
+        worker_args = [
+            (r[0], r[1], template_str, r[2] in skip_pruning_docs) 
+            for r in rows_data
+        ]
 
         max_workers = getattr(self.config, "llm_pruner_workers", None) or min(32, (os.cpu_count() or 1) * 4)
 
@@ -296,13 +322,34 @@ class AIExtractor:
         prompts = list(prompts)
         
         # 3. Batch GPU Inference (Fast)
-        llm_results = self.llm_pruner_client.call_batch(prompts, max_workers=max_workers, adapter_name="pruner")
+        llm_indices = [i for i, p in enumerate(prompts) if p is not None]
+        llm_prompts = [prompts[i] for i in llm_indices]
+        
+        if llm_prompts:
+            llm_results_partial = self.llm_pruner_client.call_batch(llm_prompts, max_workers=max_workers, adapter_name="pruner")
+        else:
+            llm_results_partial = []
+            
+        # Reconstruct llm_results matching original prompts list
+        llm_results = [None] * len(prompts)
+        for idx, resp in zip(llm_indices, llm_results_partial):
+            llm_results[idx] = resp
         
         # 4. Process Results (Light CPU work)
         final_pruned_contents = []
         pruner_logs = []
 
         for response, prompt, row_xpaths in zip(llm_results, prompts, all_rows_xpaths):
+            if prompt is None:
+                # Bypassed because token count was below threshold
+                final_pruned_contents.append(row_xpaths)
+                pruner_logs.append({
+                    "prompt": "Bypassed LLM pruner (preprocessed token count below threshold)",
+                    "response": "skipped",
+                    "selected_indices": list(range(len(row_xpaths)))
+                })
+                continue
+
             if not response: 
                 final_pruned_contents.append(row_xpaths) 
                 pruner_logs.append({
@@ -380,6 +427,11 @@ class AIExtractor:
         def build_prompt(row):
             query = row["query"]
             content = row["full_content"]
+            # Transform table representation inside the prompt ONLY.
+            # preprocessed_content / filtered_html are untouched (GXR safe).
+            content = transform_tables_in_content(
+                content, mode=self.config.table_representation
+            )
             if is_schema(query):
                 return self.schema_prompt_template.format(query=query, content=content)
             else:

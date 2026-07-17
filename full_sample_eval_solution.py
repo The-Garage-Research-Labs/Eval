@@ -1,3 +1,4 @@
+from sqlalchemy import false
 import os
 from dotenv import load_dotenv
 
@@ -26,7 +27,10 @@ import multiprocessing as mp
 ######################################## CONSTANTS
 # EXPERIMENT_NAME = "pruner_best_model"
 # EXPERIMENT_NAME = "pruner_trying"
-EXPERIMENT_NAME = "error_analysis"
+# EXPERIMENT_NAME = "error_analysis_websrc_test_json_threshold"
+# EXPERIMENT_NAME = "error_analysis_websrc_dev"
+# EXPERIMENT_NAME = "error_analysis_websrc_test"
+EXPERIMENT_NAME = "error_analysis_final"
 
 SWDE_DOMAINS = {
     "auto": 17923,
@@ -39,11 +43,13 @@ SWDE_DOMAINS = {
     "restaurant": 20000
 }
 SWDE_SAMPLES = 200
-WEBSRC_TOTAL = 50000
-WEBSRC_SAMPLES = 100
+WEBSRC_TOTAL_TEST = 40000
+WEBSRC_TOTAL_DEV = 50000
+WEBSRC_SAMPLES = 1000
 BATCH_SIZE = 50
 SEED = 42
-USE_PRUNER = True  
+USE_PRUNER = True 
+THRESHOLD_TOKENS = 2048 
 ########################################## CONFIG
 
 dataset_configs = []
@@ -58,20 +64,20 @@ for dom , val in SWDE_DOMAINS.items():
     ))
 
 
+dataset_configs.append(WebSrcConfig(
+    html_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_html_content.jsonl',
+    data_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_dataset.jsonl',
+    indices= list(range(0,WEBSRC_TOTAL_DEV,int(WEBSRC_TOTAL_DEV/WEBSRC_SAMPLES))),
+    batch_size=BATCH_SIZE
+))
 
-# dataset_configs.append(WebSrcConfig(
-#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_html_content.jsonl',
-#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_dataset.jsonl',
-#     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
-#     batch_size=BATCH_SIZE
-# ))
+dataset_configs.append(WebSrcConfig(
+    html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc/websrc/test/html_content.jsonl',
+    data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc/websrc/test/dataset.jsonl',
+    indices= list(range(0,WEBSRC_TOTAL_TEST,int(WEBSRC_TOTAL_TEST/WEBSRC_SAMPLES))),
+    batch_size=BATCH_SIZE
+))
 
-# dataset_configs.append(WebSrcConfig(
-#     html_source_path='/home/abdo/PAPER/Eval/data/websrc/test/html_content.jsonl',
-#     data_source_path='/home/abdo/PAPER/Eval/data/websrc/test/dataset.jsonl',
-#     indices= list(range(0,WEBSRC_TOTAL,int(WEBSRC_TOTAL/WEBSRC_SAMPLES))),
-#     batch_size=BATCH_SIZE
-# ))
 print(f"Created {len(dataset_configs)} of dataset configs.")
 
 reranker_preprocessor_config = RerankerPreprocessorConfig(
@@ -126,7 +132,7 @@ llm_client_config = LLMClientConfig(
             },
             "qa": {
                 "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc",
-                "temperature": 1.0 
+                "temperature": 0.0 
             },
             "schema": {
                 "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final",
@@ -138,6 +144,8 @@ llm_client_config = LLMClientConfig(
 reranker_extractor_config = RerankerExtractorConfig(
     same_llm_config= True,
     llm_config=llm_client_config,
+    # table_representation="json",
+    pruner_token_threshold=THRESHOLD_TOKENS,
     llm_pruner_config=LLMClientConfig(
         # model_name='google/gemma-3n-e4b-it',
         model_name='qwen/qwen3-coder-480b-a35b-instruct',
@@ -297,8 +305,12 @@ exp = None
 
 for i, data_cfg in enumerate(dataset_configs):
     # Determine the experiment/output name based on the dataset
-    name = "swde_" if isinstance(data_cfg, SWDEConfig) else "websrc"
-    name += data_cfg.domain if isinstance(data_cfg, SWDEConfig) else ""
+    if isinstance(data_cfg, SWDEConfig):
+        name = "swde_" + data_cfg.domain
+    else:
+        split = "dev" if "dev" in data_cfg.html_source_path.lower() else "test"
+        name = f"websrc_{split}"
+    name += "_" + EXPERIMENT_NAME
     
     print(f"\n[Manager] Preparing to run: {name}")
 

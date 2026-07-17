@@ -11,6 +11,8 @@ from lxml import etree, html
 import polars as pl
 import copy
 
+import json
+
 class SmartHTMLProcessor:
     def __init__(self):
         self.ATOMIC_TAGS = {'table', 'ul', 'ol', 'dl', 'pre', 'code', 'figure'}
@@ -856,3 +858,240 @@ def merge_xpaths_to_html(
                 cur.append(frag)
 
     return etree.tostring(root, method="html", encoding="unicode", pretty_print=pretty)
+
+
+# # ============================================================
+# # TABLE REPRESENTATION UTILITIES
+# # Only used at prompt-construction time.
+# # preprocessed_content / filtered_html are never touched.
+# # ============================================================
+
+
+
+def transform_tables_in_content(html_content: str, mode: str = "markdown") -> str:
+    """
+    Replace every ``<table>`` element inside *html_content* with an alternative
+    text representation, leaving all non-table HTML completely untouched.
+
+    This is the **only** function that should be called from the prompt-building
+    step.  It must never be called on ``preprocessed_content`` or
+    ``filtered_html`` — those fields are used for GXR tracing and must always
+    stay as raw HTML.
+
+    Args:
+        html_content: The HTML string to transform (typically ``full_content``
+                      produced by ``_generate_output``).
+        mode:         One of:
+                        ``"html"``      – no-op, returns original string.
+                        ``"markdown"``  – replaces tables with GFM Markdown.
+                        ``"json"``      – replaces tables with JSON lists.
+
+    Returns:
+        Transformed HTML string with tables replaced by the chosen format.
+    """
+    if mode == "html" or not html_content:
+        return html_content
+
+    if mode not in ("markdown", "json"):
+        raise ValueError(f"Unknown table representation mode: {mode!r}. "
+                         f"Choose from 'html', 'markdown', 'json'.")
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    tables = soup.find_all("table")
+
+    if not tables:
+        return html_content  # Nothing to do — fast path
+
+    converter = table_to_markdown if mode == "markdown" else table_to_json
+
+    for table in reversed(tables):
+        replacement_text = converter(table)
+        if not replacement_text:
+            # Un-parseable table: keep its children, just remove the <table> wrapper
+            table.unwrap()
+            continue
+        # Replace the <table> node with a plain NavigableString so that the
+        # surrounding HTML structure (divs, sections, etc.) is preserved.
+        table.replace_with(NavigableString(f"\n{replacement_text}\n"))
+
+    return str(soup)
+
+
+
+
+def _iter_row_cells(tr):
+    """
+    Yield objects that should behave like table cells.
+
+    Supports both valid HTML (<td>/<th>) and malformed tables where
+    elements such as <a>, <div>, or <span> appear directly under <tr>.
+    """
+
+    ignored = {
+        "script",
+        "style",
+        "template",
+        "noscript",
+        "meta",
+        "link",
+    }
+
+    for child in tr.children:
+        if isinstance(child, Comment):
+            continue
+
+        if not getattr(child, "name", None):
+            continue
+
+        if child.name in ignored:
+            continue
+
+        # Proper table cell
+        if child.name in ("td", "th"):
+            yield child
+            continue
+
+        # Malformed HTML: only treat as a cell if it actually contains text.
+        if child.get_text(" ", strip=True):
+            yield child
+
+
+def _build_table_grid(table_tag) -> Tuple[List[List[str]], int, int]:
+    """
+    Parse a BeautifulSoup <table> into a logical rectangular grid.
+
+    Correctly handles:
+        - rowspan
+        - colspan
+        - malformed tables
+        - missing <tbody>
+        - direct <a>/<div>/<span> children under <tr>
+    """
+
+    rows = [
+        tr for tr in table_tag.find_all("tr")
+        if tr.find_parent("table") is table_tag
+    ]
+
+    if not rows:
+        return [], 0, 0
+
+    occupied: Dict[Tuple[int, int], str] = {}
+
+    for r_idx, tr in enumerate(rows):
+        c_idx = 0
+
+        for cell in _iter_row_cells(tr):
+
+            while (r_idx, c_idx) in occupied:
+                c_idx += 1
+
+            text = cell.get_text(" ", strip=True)
+
+            if cell.name in ("td", "th"):
+                try:
+                    colspan = max(1, int(cell.get("colspan", 1)))
+                except Exception:
+                    colspan = 1
+
+                try:
+                    rowspan = max(1, int(cell.get("rowspan", 1)))
+                except Exception:
+                    rowspan = 1
+            else:
+                colspan = 1
+                rowspan = 1
+
+            for dr in range(rowspan):
+                for dc in range(colspan):
+                    occupied[(r_idx + dr, c_idx + dc)] = (
+                        text if (dr == 0 and dc == 0) else ""
+                    )
+
+            c_idx += colspan
+
+    if not occupied:
+        return [], 0, 0
+
+    n_rows = max(r for r, _ in occupied) + 1
+    n_cols = max(c for _, c in occupied) + 1
+
+    grid = [
+        [occupied.get((r, c), "") for c in range(n_cols)]
+        for r in range(n_rows)
+    ]
+
+    return grid, n_rows, n_cols
+
+
+def table_to_markdown(table_tag) -> str:
+    """
+    Convert a table into GitHub-flavored Markdown.
+    """
+
+    grid, n_rows, n_cols = _build_table_grid(table_tag)
+
+    if not n_rows:
+        return ""
+
+    lines = []
+
+    for r, row in enumerate(grid):
+        cells = [
+            cell.replace("|", "\\|").replace("\n", "<br>")
+            for cell in row
+        ]
+
+        lines.append("| " + " | ".join(cells) + " |")
+
+        if r == 0:
+            lines.append("| " + " | ".join(["---"] * n_cols) + " |")
+
+    return "\n".join(lines)
+
+
+def table_to_json(table_tag) -> str:
+    """
+    Convert a table into a row-oriented JSON list.
+    """
+
+    grid, n_rows, n_cols = _build_table_grid(table_tag)
+
+    if n_rows < 2:
+        return ""
+
+    headers = []
+
+    seen = {}
+
+    for c in range(n_cols):
+        h = grid[0][c].strip()
+
+        if not h:
+            h = f"Col_{c}"
+
+        # Ensure unique header names
+        if h in seen:
+            seen[h] += 1
+            h = f"{h}_{seen[h]}"
+        else:
+            seen[h] = 0
+
+        headers.append(h)
+
+    records = []
+
+    for row in grid[1:]:
+
+        # skip blank rows
+        if not any(cell.strip() for cell in row):
+            continue
+
+        record = {
+            headers[c]: row[c].strip()
+            for c in range(n_cols)
+        }
+
+        records.append(record)
+
+    return json.dumps(records, ensure_ascii=False)

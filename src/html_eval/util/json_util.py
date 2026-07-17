@@ -64,10 +64,16 @@ def extract_and_repair_json(response: Union[str,dict] , spread_values:bool = Fal
         if spread_values:
             final_parsing = ""
             for att , val in list(parsed.items()):
-                if not isinstance(val,str):
-                    final_parsing += ""
-                    continue
-                final_parsing += val
+                if isinstance(val, str):
+                    final_parsing += val
+                elif isinstance(val, (int, float, bool)):
+                    final_parsing += str(val)
+                elif isinstance(val, list):
+                    for item in val:
+                        if isinstance(item, str):
+                            final_parsing += item
+                        elif isinstance(item, (int, float, bool)):
+                            final_parsing += str(item)
             return final_parsing
         
         return parsed

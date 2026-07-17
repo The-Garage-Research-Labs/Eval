@@ -83,6 +83,14 @@ class RerankerExtractorConfig:
     reranker_classification_threshold: float = 0.5
 
     use_llm_pruner:  bool = True
+    pruner_token_threshold: Optional[int] = 2048
+
+    # Controls how <table> elements are represented inside the LLM prompt.
+    # "html"     – unchanged (current behaviour, default)
+    # "markdown" – convert tables to GFM Markdown before prompting
+    # "json"     – convert tables to row-oriented JSON lists before prompting
+    # NOTE: preprocessed_content and filtered_html are NEVER affected by this.
+    table_representation: str = "html"
 
 
     def to_dict(self) -> Dict[str, Any]:

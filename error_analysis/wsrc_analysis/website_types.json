@@ -1,0 +1,82 @@
+{
+    "auto": {
+        "1": "KV",
+        "3": "KV",
+        "8": "Compare",
+        "9": "Table",
+        "10": "Compare",
+        "11": "KV",
+        "12": "Compare"
+    },
+    "book": {
+        "1": "Compare",
+        "7": "Compare",
+        "8": "KV",
+        "9": "Compare",
+        "10": "KV",
+        "17": "Compare"
+    },
+    "camera": {
+        "1": "KV",
+        "2": "KV"
+    },
+    "game": {
+        "1": "Compare",
+        "9": "KV",
+        "10": "Table",
+        "12": "KV"
+    },
+    "jobs": {
+        "3": "Compare",
+        "5": "KV",
+        "10": "Compare",
+        "11": "Compare",
+        "12": "Table",
+        "13": "Table"
+    },
+    "movie": {
+        "2": "KV",
+        "4": "KV",
+        "6": "KV",
+        "7": "KV"
+    },
+    "phone": {
+        "1": "KV",
+        "2": "KV",
+        "3": "KV",
+        "4": "KV",
+        "5": "KV"
+    },
+    "restaurant": {
+        "2": "KV",
+        "3": "KV",
+        "5": "KV"
+    },
+    "sports": {
+        "1": "KV",
+        "2": "KV",
+        "3": "KV",
+        "4": "KV",
+        "6": "KV",
+        "7": "Table",
+        "8": "Table",
+        "9": "Table",
+        "10": "Table",
+        "11": "Table",
+        "12": "Table",
+        "13": "Table",
+        "14": "Table",
+        "15": "Table"
+    },
+    "university": {
+        "2": "Table",
+        "3": "KV",
+        "4": "Compare",
+        "6": "KV",
+        "7": "KV",
+        "9": "Table",
+        "10": "Table",
+        "11": "Table",
+        "12": "Table"
+    }
+}

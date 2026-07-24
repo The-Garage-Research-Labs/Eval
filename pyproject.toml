@@ -78,6 +78,7 @@ dependencies = [
     "greenlet==3.2.4",
     "groovy==0.1.2",
     "h11==0.16.0",
+    "hf-transfer>=0.1.9",
     "hf-xet==1.1.7",
     "html-chunking==0.0.4",
     "html2text==2025.4.15",

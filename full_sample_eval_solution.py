@@ -1,4 +1,3 @@
-from sqlalchemy import false
 import os
 from dotenv import load_dotenv
 
@@ -34,29 +33,30 @@ EXPERIMENT_NAME = "error_analysis_final"
 
 SWDE_DOMAINS = {
     "auto": 17923,
-    "university": 16705,
-    "camera": 5258,
-    "book": 20000,
-    "job": 20000,
-    "nbaplayer": 4405,
-    "movie": 20000,
-    "restaurant": 20000
+    # "university": 16705,
+    # "camera": 5258,
+    # "book": 20000,
+    # "job": 20000,
+    # "nbaplayer": 4405,
+    # "movie": 20000,
+    # "restaurant": 20000
 }
 SWDE_SAMPLES = 200
 WEBSRC_TOTAL_TEST = 40000
 WEBSRC_TOTAL_DEV = 50000
 WEBSRC_SAMPLES = 1000
-BATCH_SIZE = 50
+BATCH_SIZE = 200
 SEED = 42
 USE_PRUNER = True 
 THRESHOLD_TOKENS = 2048 
+OUTPUT_DIR = "/workspace/output"
 ########################################## CONFIG
 
 dataset_configs = []
 
 for dom , val in SWDE_DOMAINS.items():
     dataset_configs.append(SWDEConfig(
-        local_dir="/home/abdo/PAPER/Eval/data/swde/hf_SWDE",
+        local_dir="/workspace/SWDE",
         indices=list(range(0,val,int(val/SWDE_SAMPLES))),  # Use a subset of the dataset for
         # indices=list(range(0,1000,25)), # Single sample for rapid verification
         domain=dom,
@@ -65,15 +65,15 @@ for dom , val in SWDE_DOMAINS.items():
 
 
 dataset_configs.append(WebSrcConfig(
-    html_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_html_content.jsonl',
-    data_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_dataset.jsonl',
+    html_source_path='/workspace/websrc/dev/dev_html_content.jsonl',
+    data_source_path='/workspace/websrc/dev/dev_dataset.jsonl',
     indices= list(range(0,WEBSRC_TOTAL_DEV,int(WEBSRC_TOTAL_DEV/WEBSRC_SAMPLES))),
     batch_size=BATCH_SIZE
 ))
 
 dataset_configs.append(WebSrcConfig(
-    html_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc/websrc/test/html_content.jsonl',
-    data_source_path='/home/abdo/PAPER/Eval/data/websrc/hf_websrc/websrc/test/dataset.jsonl',
+    html_source_path='/workspace/websrc/test/html_content.jsonl',
+    data_source_path='/workspace/websrc/test/dataset.jsonl',
     indices= list(range(0,WEBSRC_TOTAL_TEST,int(WEBSRC_TOTAL_TEST/WEBSRC_SAMPLES))),
     batch_size=BATCH_SIZE
 ))
@@ -108,7 +108,7 @@ llm_client_config = LLMClientConfig(
         # api_key="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",
         max_tokens= 1024, # max new tokens
         engine_args={
-            "gpu_memory_utilization": 0.8, 
+            "gpu_memory_utilization": 0.9, 
             "max_model_len": 8192, # max total tokens
             # "enforce_eager": True,
         },
@@ -127,15 +127,15 @@ llm_client_config = LLMClientConfig(
         # },
         lora_modules={
             "pruner": {
-                "path": "abdo-Mansour/Pruner_Adaptor_Qwen_3_FINAL_EXTRA",
+                "path": "abdo-Mansour/AXE-Pruner-Adapter-Qwen3-0.6b",
                 "temperature": 0.0  
             },
             "qa": {
-                "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_QA_websrc",
+                "path": "abdo-Mansour/AXE-QA-Adapter-Qwen3-0.6b",
                 "temperature": 0.0 
             },
             "schema": {
-                "path": "abdo-Mansour/Extractor_Adaptor_Qwen3_Final",
+                "path": "abdo-Mansour/AXE-Extractor-Adapter-Qwen3-0.6b",
                 "temperature": 0.0  
             }
         },
@@ -305,11 +305,12 @@ exp = None
 
 for i, data_cfg in enumerate(dataset_configs):
     # Determine the experiment/output name based on the dataset
+    name = OUTPUT_DIR + "/"
     if isinstance(data_cfg, SWDEConfig):
-        name = "swde_" + data_cfg.domain
+        name += "swde_" + data_cfg.domain
     else:
         split = "dev" if "dev" in data_cfg.html_source_path.lower() else "test"
-        name = f"websrc_{split}"
+        name += f"websrc_{split}"
     name += "_" + EXPERIMENT_NAME
     
     print(f"\n[Manager] Preparing to run: {name}")

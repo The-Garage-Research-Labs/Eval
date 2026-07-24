@@ -1,0 +1,14 @@
+{
+    "websrc_dev_error_analysis_final_temp": {
+        "predictions_file": "websrc_dev_error_analysis_final_temp/predictions.ndjson",
+        "results": {
+            "token_f1": {
+                "f1": 0.842463048063047,
+                "precision": 0.8454067460317461,
+                "recall": 0.8615288562314878
+            }
+        }
+    },
+    "average_page_level_f1": 0.0,
+    "average_token_level_f1": 0.842463048063047
+}

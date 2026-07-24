@@ -115,24 +115,28 @@ def _worker_filter_prep(args):
     Receives: (chunk_content, query, template_string, skip_pruner)
     Returns: (chunk_xpaths_object, prompt_string)
     """
-    row_content, row_query, prompt_template, skip_pruner = args
-    
-    # 1. Instantiate Processor inside the worker (avoid pickling the object)
-    processor = SmartHTMLProcessor() 
-    
-    # 2. Heavy CPU: Parse HTML
-    chunk_xpaths = processor.extract_chunks(row_content)
-    
-    if skip_pruner:
-        return chunk_xpaths, None
-    
-    # 3. Prepare data for prompt generation
-    xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
-    
-    # 4. Generate Prompt using STANDALONE function
-    prompt = generate_pruner_prompt(xpath_pairs, row_query, prompt_template)
-    
-    return chunk_xpaths, prompt
+    try:
+        row_content, row_query, prompt_template, skip_pruner = args
+        
+        # 1. Instantiate Processor inside the worker (avoid pickling the object)
+        processor = SmartHTMLProcessor() 
+        
+        # 2. Heavy CPU: Parse HTML
+        chunk_xpaths = processor.extract_chunks(row_content)
+        
+        if skip_pruner:
+            return chunk_xpaths, None
+        
+        # 3. Prepare data for prompt generation
+        xpath_pairs = [(item['xpath'], item['content']) for item in chunk_xpaths]
+        
+        # 4. Generate Prompt using STANDALONE function
+        prompt = generate_pruner_prompt(xpath_pairs, row_query, prompt_template)
+        
+        return chunk_xpaths, prompt
+    except Exception as e:
+        print(f"[Error in _worker_filter_prep]: {e}")
+        return [], None
 
 def _worker_merge_html(args):
     """
@@ -141,14 +145,18 @@ def _worker_merge_html(args):
     Returns: string
     """
     chunks, content = args
-    # Import locally to be safe, though util imports are usually fine
-    from html_eval.util.html_util import merge_html_chunks
-    
-    # Heavy CPU: Merge and clean HTML
-    merged = merge_html_chunks(chunks, content)
-    
-    # Optimization: remove newlines here in the worker
-    return merged.replace("\n", "")
+    try:
+        # Import locally to be safe, though util imports are usually fine
+        from html_eval.util.html_util import merge_html_chunks
+        
+        # Heavy CPU: Merge and clean HTML
+        merged = merge_html_chunks(chunks, content)
+        
+        # Optimization: remove newlines here in the worker
+        return merged.replace("\n", "")
+    except Exception as e:
+        print(f"[Error in _worker_merge_html]: {e}")
+        return (content or "").replace("\n", "")
 
 # ==============================================================================
 # 3. CLASS DEFINITION
@@ -381,8 +389,8 @@ class AIExtractor:
             })
 
         return filtered_batch.with_columns([
-            pl.Series(name="chunkcontent", values=final_pruned_contents),
-            pl.Series(name="pruner_log", values=pruner_logs)
+            pl.Series(name="chunkcontent", values=final_pruned_contents, strict=False),
+            pl.Series(name="pruner_log", values=pruner_logs, strict=False)
         ])
 
     # ---------------------------------------------------------

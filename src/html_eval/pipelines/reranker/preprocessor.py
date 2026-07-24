@@ -18,15 +18,15 @@ from html_eval.configs.pipeline_config import RerankerPreprocessorConfig
 def _chunk_worker(args: tuple) -> Dict[str, Any]:
     sample, config, idx = args
     raw_content = sample.content if getattr(sample, "content", None) else ""
-    cleaned_text = clean_html(
-        html_content=raw_content,
-        extra_remove_tags=config.extra_remove_tags,
-        strip_attrs=config.strip_attrs,
-        strip_links=config.strip_links,
-        keep_tags=config.keep_tags,
-        use_clean_rag=config.use_clean_rag)
-    
+    cleaned_text = None
     try:
+        cleaned_text = clean_html(
+            html_content=raw_content,
+            extra_remove_tags=config.extra_remove_tags,
+            strip_attrs=config.strip_attrs,
+            strip_links=config.strip_links,
+            keep_tags=config.keep_tags,
+            use_clean_rag=config.use_clean_rag)
         if not cleaned_text:
             err_chunks = [{'chunkid': f"{idx}-err", 'chunkcontent': '[Chunk Worker ERROR] empty content or fetch failed'}]
             return {
@@ -150,11 +150,11 @@ class BasePreprocessor:
                 results[idx] = res
 
 
-        batch_df = pl.DataFrame(batch)
+        batch_df = pl.DataFrame(batch, strict=False)
         # print("Preprocessed batch :", batch_df)
         # print("Results :",results)
         # print("With results :",batch_df.hstack(pl.DataFrame(results)))
-        return batch_df.hstack(pl.DataFrame(results))
+        return batch_df.hstack(pl.DataFrame(results, strict=False))
 
 
         

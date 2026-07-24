@@ -326,10 +326,10 @@ class PostProcessor:
 
         pred_values = [p.prediction for p in preds]
         df_out = df.with_columns([
-            pl.Series("prediction", pred_values)
+            pl.Series("prediction", pred_values, strict=False)
         ])
         if "preprocessed_content" not in df_out.columns:
-            df_out = df_out.with_columns(pl.Series("preprocessed_content", [p.preprocessed_content for p in preds]))
+            df_out = df_out.with_columns(pl.Series("preprocessed_content", [p.preprocessed_content for p in preds], strict=False))
         if "step_logs" not in df_out.columns:
-            df_out = df_out.with_columns(pl.Series("step_logs", [p.step_logs for p in preds]))
+            df_out = df_out.with_columns(pl.Series("step_logs", [p.step_logs for p in preds], strict=False))
         return df_out

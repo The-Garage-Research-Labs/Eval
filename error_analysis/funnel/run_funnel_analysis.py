@@ -443,7 +443,7 @@ def run_funnel_analysis(
                     "score_preprocessed": debug.get("score_preprocessed", 0.0),
                 })
 
-    df_results = pl.DataFrame(results)
+    df_results = pl.DataFrame(results, strict=False)
 
     if df_results.height > 0 and verbose:
         summary = (df_results

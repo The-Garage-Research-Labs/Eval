@@ -254,7 +254,8 @@ class PostProcessor:
         queries = df[query_col].to_list() if query_col in df.columns else [None] * len(df)
         
         # For exact extraction, we prefer 'cleaned_content' if present, else fallback
-        contents = df["cleaned_content"].to_list() if "cleaned_content" in df.columns else (df[content_col].to_list() if content_col in df.columns else [None] * len(df))
+        # contents = df["cleaned_content"].to_list() if "cleaned_content" in df.columns else (df[content_col].to_list() if content_col in df.columns else [None] * len(df))
+        contents = (df[content_col].to_list() if content_col in df.columns else [None] * len(df))
         
         # 2. Build Metadata Lightweights (pointers, not deep copies)
         ids = df[id_col].to_list() if id_col in df.columns else [None] * len(df)

@@ -67,7 +67,7 @@ class SWDEDataset(BaseHTMLDataset):
         
         row = self.dataset[self._domain][idx]
         html_path = os.path.join(self.html_source_path, self._domain)
-        folders = [f for f in os.listdir(html_path) if f.startswith(f"{self._domain}-{row['website_id'].split('_')[0]}")] 
+        folders = [f for f in os.listdir(html_path) if f.startswith(f"{self._domain}-{row['website_id'].split('_')[0]}(")] 
         file_path = os.path.join(html_path, folders[0], f"{row['website_id'].split('_')[1]}.htm")
 
         if not os.path.isfile(file_path):

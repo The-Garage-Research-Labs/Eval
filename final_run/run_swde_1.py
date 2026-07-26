@@ -5,6 +5,7 @@ load_dotenv()
 # move to the directory where src is located
 # os.chdir('/home/abdo/PAPER/Eval/src')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # Setting an API key for NVIDIA 
 
 from html_eval import Experiment
@@ -27,20 +28,20 @@ SWDE_DOMAINS = {
     "university": 16705,
     "camera": 5258,
     "book": 20000,
-    # "job": 20000,
-    # "nbaplayer": 4405,
-    # "movie": 20000,
-    # "restaurant": 20000
+    "job": 20000,
+    "nbaplayer": 4405,
+    "movie": 20000,
+    "restaurant": 20000
 }
 SWDE_SAMPLES = 200
 WEBSRC_TOTAL_TEST = 40000
 WEBSRC_TOTAL_DEV = 50000
 WEBSRC_SAMPLES = 1000
-BATCH_SIZE = 10000
+BATCH_SIZE = 20000
 SEED = 42
 USE_PRUNER = True 
-THRESHOLD_TOKENS = 2048 
-OUTPUT_DIR = "/workspace/output"
+THRESHOLD_TOKENS = 1024 
+OUTPUT_DIR = "/workspace/final_output"
 ########################################## CONFIG
 
 dataset_configs = []
@@ -89,7 +90,7 @@ llm_client_config = LLMClientConfig(
         # api_key="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",
         max_tokens= 1024 * 2, # max new tokens
         engine_args={
-            "gpu_memory_utilization": 0.33, 
+            "gpu_memory_utilization": 0.9, 
             "max_model_len": 8192 * 2, # max total tokens
             # "enforce_eager": True,
         },

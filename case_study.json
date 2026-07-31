@@ -1,0 +1,2472 @@
+{
+    "local_run/swde_auto_case_study": {
+        "predictions_file": "local_run/swde_auto_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.7654725991186988,
+                "precision": 0.783262987012987,
+                "recall": 0.7551948051948052,
+                "website_aggregated_results": {
+                    "aol": {
+                        "f1": 0.634963768115942,
+                        "precision": 0.6458333333333334,
+                        "recall": 0.625
+                    },
+                    "yahoo": {
+                        "f1": 0.5232954545454546,
+                        "precision": 0.6045454545454545,
+                        "recall": 0.4772727272727273
+                    },
+                    "motortrend": {
+                        "f1": 0.8928571428571428,
+                        "precision": 0.8928571428571428,
+                        "recall": 0.8928571428571428
+                    },
+                    "carquotes": {
+                        "f1": 0.6363636363636364,
+                        "precision": 0.6363636363636364,
+                        "recall": 0.6363636363636364
+                    },
+                    "msn": {
+                        "f1": 0.56951871657754,
+                        "precision": 0.6553030303030303,
+                        "recall": 0.5227272727272727
+                    },
+                    "autobytel": {
+                        "f1": 0.8181818181818182,
+                        "precision": 0.8181818181818182,
+                        "recall": 0.8181818181818182
+                    },
+                    "autoweb": {
+                        "f1": 0.9791666666666666,
+                        "precision": 0.9791666666666666,
+                        "recall": 0.9791666666666666
+                    },
+                    "kbb": {
+                        "f1": 0.9545454545454546,
+                        "precision": 0.9545454545454546,
+                        "recall": 0.9545454545454546
+                    },
+                    "cars": {
+                        "f1": 0.8333333333333333,
+                        "precision": 0.8333333333333333,
+                        "recall": 0.8333333333333333
+                    },
+                    "automotive": {
+                        "f1": 0.8125,
+                        "precision": 0.8125,
+                        "recall": 0.8125
+                    }
+                },
+                "field_aggregated_results": {
+                    "model": {
+                        "f1": 0.6430519480519481,
+                        "precision": 0.6452741702741702,
+                        "recall": 0.6412337662337663
+                    },
+                    "engine": {
+                        "f1": 0.776951871657754,
+                        "precision": 0.8141414141414142,
+                        "recall": 0.7545454545454545
+                    },
+                    "fuel_economy": {
+                        "f1": 0.7691593040378206,
+                        "precision": 0.8009090909090908,
+                        "recall": 0.7522727272727272
+                    },
+                    "price": {
+                        "f1": 0.8727272727272727,
+                        "precision": 0.8727272727272727,
+                        "recall": 0.8727272727272727
+                    }
+                },
+                "results": {
+                    "aol": {
+                        "engine": {
+                            "page_hits": 0,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 0
+                        },
+                        "fuel_economy": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 12
+                        },
+                        "price": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "model": {
+                            "page_hits": 7,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "yahoo": {
+                        "model": {
+                            "page_hits": 2,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 11
+                        },
+                        "price": {
+                            "page_hits": 9,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "fuel_economy": {
+                            "page_hits": 3,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 11
+                        },
+                        "engine": {
+                            "page_hits": 7,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 11
+                        }
+                    },
+                    "motortrend": {
+                        "price": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "fuel_economy": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "model": {
+                            "page_hits": 4,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "engine": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        }
+                    },
+                    "carquotes": {
+                        "fuel_economy": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "engine": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "model": {
+                            "page_hits": 6,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "price": {
+                            "page_hits": 0,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        }
+                    },
+                    "msn": {
+                        "model": {
+                            "page_hits": 6,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "price": {
+                            "page_hits": 10,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "engine": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 11
+                        },
+                        "fuel_economy": {
+                            "page_hits": 1,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 11
+                        }
+                    },
+                    "autobytel": {
+                        "model": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "engine": {
+                            "page_hits": 4,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "fuel_economy": {
+                            "page_hits": 10,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "price": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        }
+                    },
+                    "autoweb": {
+                        "fuel_economy": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "engine": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "price": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "model": {
+                            "page_hits": 11,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "kbb": {
+                        "fuel_economy": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "model": {
+                            "page_hits": 9,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "price": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        },
+                        "engine": {
+                            "page_hits": 11,
+                            "extracted_pages": 11,
+                            "ground_truth_pages": 11
+                        }
+                    },
+                    "cars": {
+                        "fuel_economy": {
+                            "page_hits": 1,
+                            "extracted_pages": 3,
+                            "ground_truth_pages": 3
+                        },
+                        "engine": {
+                            "page_hits": 3,
+                            "extracted_pages": 3,
+                            "ground_truth_pages": 3
+                        },
+                        "model": {
+                            "page_hits": 3,
+                            "extracted_pages": 3,
+                            "ground_truth_pages": 3
+                        },
+                        "price": {
+                            "page_hits": 3,
+                            "extracted_pages": 3,
+                            "ground_truth_pages": 3
+                        }
+                    },
+                    "automotive": {
+                        "price": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "engine": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "model": {
+                            "page_hits": 3,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "fuel_economy": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_university_case_study": {
+        "predictions_file": "local_run/swde_university_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9601190476190476,
+                "precision": 0.9625,
+                "recall": 0.9583333333333333,
+                "website_aggregated_results": {
+                    "collegetoolkit": {
+                        "f1": 0.75,
+                        "precision": 0.75,
+                        "recall": 0.75
+                    },
+                    "collegeprowler": {
+                        "f1": 0.9791666666666666,
+                        "precision": 0.9791666666666666,
+                        "recall": 0.9791666666666666
+                    },
+                    "matchcollege": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "collegenavigator": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "ecampustours": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "usnews": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "princetonreview": {
+                        "f1": 0.8928571428571429,
+                        "precision": 0.9166666666666666,
+                        "recall": 0.875
+                    },
+                    "studentaid": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "collegeboard": {
+                        "f1": 0.9791666666666666,
+                        "precision": 0.9791666666666666,
+                        "recall": 0.9791666666666666
+                    },
+                    "embark": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    }
+                },
+                "field_aggregated_results": {
+                    "website": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "name": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "phone": {
+                        "f1": 0.9,
+                        "precision": 0.9,
+                        "recall": 0.9
+                    },
+                    "type": {
+                        "f1": 0.9404761904761904,
+                        "precision": 0.95,
+                        "recall": 0.9333333333333332
+                    }
+                },
+                "results": {
+                    "collegetoolkit": {
+                        "phone": {
+                            "page_hits": 0,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 0
+                        },
+                        "type": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "collegeprowler": {
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "type": {
+                            "page_hits": 11,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "matchcollege": {
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "type": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "collegenavigator": {
+                        "type": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "ecampustours": {
+                        "phone": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "type": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "name": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "website": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        }
+                    },
+                    "usnews": {
+                        "type": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        },
+                        "phone": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        },
+                        "website": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        },
+                        "name": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        }
+                    },
+                    "princetonreview": {
+                        "type": {
+                            "page_hits": 2,
+                            "extracted_pages": 3,
+                            "ground_truth_pages": 4
+                        },
+                        "phone": {
+                            "page_hits": 4,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 4
+                        },
+                        "name": {
+                            "page_hits": 4,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 4
+                        },
+                        "website": {
+                            "page_hits": 0,
+                            "extracted_pages": 0,
+                            "ground_truth_pages": 0
+                        }
+                    },
+                    "studentaid": {
+                        "type": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "collegeboard": {
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "type": {
+                            "page_hits": 11,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "embark": {
+                        "website": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "type": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "phone": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_camera_case_study": {
+        "predictions_file": "local_run/swde_camera_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.883159819483349,
+                "precision": 0.883159819483349,
+                "recall": 0.883159819483349,
+                "website_aggregated_results": {
+                    "thenerds": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "ecost": {
+                        "f1": 0.9259259259259259,
+                        "precision": 0.9259259259259259,
+                        "recall": 0.9259259259259259
+                    },
+                    "jr": {
+                        "f1": 0.8571428571428572,
+                        "precision": 0.8571428571428572,
+                        "recall": 0.8571428571428572
+                    },
+                    "buy": {
+                        "f1": 0.9666666666666667,
+                        "precision": 0.9666666666666667,
+                        "recall": 0.9666666666666667
+                    },
+                    "amazon": {
+                        "f1": 0.9901960784313726,
+                        "precision": 0.9901960784313726,
+                        "recall": 0.9901960784313726
+                    },
+                    "pcnation": {
+                        "f1": 0.75,
+                        "precision": 0.75,
+                        "recall": 0.75
+                    },
+                    "beachaudio": {
+                        "f1": 0.8000000000000002,
+                        "precision": 0.7999999999999999,
+                        "recall": 0.7999999999999999
+                    },
+                    "compsource": {
+                        "f1": 0.875,
+                        "precision": 0.875,
+                        "recall": 0.875
+                    },
+                    "newegg": {
+                        "f1": 0.8666666666666668,
+                        "precision": 0.8666666666666667,
+                        "recall": 0.8666666666666667
+                    },
+                    "onsale": {
+                        "f1": 0.8000000000000002,
+                        "precision": 0.7999999999999999,
+                        "recall": 0.7999999999999999
+                    }
+                },
+                "field_aggregated_results": {
+                    "manufacturer": {
+                        "f1": 0.9714285714285715,
+                        "precision": 0.9714285714285715,
+                        "recall": 0.9714285714285715
+                    },
+                    "product_title": {
+                        "f1": 0.8277777777777777,
+                        "precision": 0.8277777777777777,
+                        "recall": 0.8277777777777777
+                    },
+                    "price": {
+                        "f1": 0.8502731092436975,
+                        "precision": 0.8502731092436975,
+                        "recall": 0.8502731092436975
+                    }
+                },
+                "results": {
+                    "thenerds": {
+                        "manufacturer": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        },
+                        "price": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        },
+                        "product_title": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 6
+                        }
+                    },
+                    "ecost": {
+                        "product_title": {
+                            "page_hits": 14,
+                            "extracted_pages": 18,
+                            "ground_truth_pages": 18
+                        },
+                        "price": {
+                            "page_hits": 18,
+                            "extracted_pages": 18,
+                            "ground_truth_pages": 18
+                        },
+                        "manufacturer": {
+                            "page_hits": 18,
+                            "extracted_pages": 18,
+                            "ground_truth_pages": 18
+                        }
+                    },
+                    "jr": {
+                        "product_title": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "price": {
+                            "page_hits": 6,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "manufacturer": {
+                            "page_hits": 5,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        }
+                    },
+                    "buy": {
+                        "manufacturer": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "price": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "product_title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "amazon": {
+                        "price": {
+                            "page_hits": 33,
+                            "extracted_pages": 34,
+                            "ground_truth_pages": 34
+                        },
+                        "manufacturer": {
+                            "page_hits": 34,
+                            "extracted_pages": 34,
+                            "ground_truth_pages": 34
+                        },
+                        "product_title": {
+                            "page_hits": 34,
+                            "extracted_pages": 34,
+                            "ground_truth_pages": 34
+                        }
+                    },
+                    "pcnation": {
+                        "price": {
+                            "page_hits": 1,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 4
+                        },
+                        "manufacturer": {
+                            "page_hits": 4,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 4
+                        },
+                        "product_title": {
+                            "page_hits": 4,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 4
+                        }
+                    },
+                    "beachaudio": {
+                        "price": {
+                            "page_hits": 5,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "product_title": {
+                            "page_hits": 2,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "manufacturer": {
+                            "page_hits": 5,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        }
+                    },
+                    "compsource": {
+                        "price": {
+                            "page_hits": 5,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 8
+                        },
+                        "manufacturer": {
+                            "page_hits": 8,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 8
+                        },
+                        "product_title": {
+                            "page_hits": 8,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 8
+                        }
+                    },
+                    "newegg": {
+                        "product_title": {
+                            "page_hits": 4,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "manufacturer": {
+                            "page_hits": 5,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "price": {
+                            "page_hits": 4,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        }
+                    },
+                    "onsale": {
+                        "price": {
+                            "page_hits": 5,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "product_title": {
+                            "page_hits": 2,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        },
+                        "manufacturer": {
+                            "page_hits": 5,
+                            "extracted_pages": 5,
+                            "ground_truth_pages": 5
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_book_case_study": {
+        "predictions_file": "local_run/swde_book_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9095263157894736,
+                "precision": 0.9153333333333334,
+                "recall": 0.906,
+                "website_aggregated_results": {
+                    "borders": {
+                        "f1": 0.9800000000000001,
+                        "precision": 0.9800000000000001,
+                        "recall": 0.9800000000000001
+                    },
+                    "amazon": {
+                        "f1": 0.6000000000000001,
+                        "precision": 0.6,
+                        "recall": 0.6
+                    },
+                    "abebooks": {
+                        "f1": 0.9494736842105264,
+                        "precision": 0.96,
+                        "recall": 0.9400000000000001
+                    },
+                    "barnesandnoble": {
+                        "f1": 0.8899999999999999,
+                        "precision": 0.9399999999999998,
+                        "recall": 0.86
+                    },
+                    "booksamillion": {
+                        "f1": 0.9600000000000002,
+                        "precision": 0.96,
+                        "recall": 0.96
+                    },
+                    "bookdepository": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "deepdiscount": {
+                        "f1": 0.9400000000000001,
+                        "precision": 0.9400000000000001,
+                        "recall": 0.9400000000000001
+                    },
+                    "buy": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "waterstones": {
+                        "f1": 0.9494736842105264,
+                        "precision": 0.9400000000000001,
+                        "recall": 0.96
+                    },
+                    "christianbook": {
+                        "f1": 0.8263157894736842,
+                        "precision": 0.8333333333333334,
+                        "recall": 0.8200000000000001
+                    }
+                },
+                "field_aggregated_results": {
+                    "title": {
+                        "f1": 0.9700000000000001,
+                        "precision": 0.9700000000000001,
+                        "recall": 0.9700000000000001
+                    },
+                    "author": {
+                        "f1": 0.8647368421052632,
+                        "precision": 0.8699999999999999,
+                        "recall": 0.86
+                    },
+                    "publication_date": {
+                        "f1": 0.9,
+                        "precision": 0.9,
+                        "recall": 0.9
+                    },
+                    "isbn_13": {
+                        "f1": 0.9631578947368421,
+                        "precision": 0.9666666666666666,
+                        "recall": 0.96
+                    },
+                    "publisher": {
+                        "f1": 0.8497368421052632,
+                        "precision": 0.8700000000000001,
+                        "recall": 0.8400000000000001
+                    }
+                },
+                "results": {
+                    "borders": {
+                        "publisher": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "amazon": {
+                        "publisher": {
+                            "page_hits": 2,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 1,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "abebooks": {
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "barnesandnoble": {
+                        "author": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "booksamillion": {
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "bookdepository": {
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "deepdiscount": {
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 7,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "buy": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "waterstones": {
+                        "author": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 9
+                        }
+                    },
+                    "christianbook": {
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "author": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "publication_date": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "isbn_13": {
+                            "page_hits": 6,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        },
+                        "publisher": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_job_case_study": {
+        "predictions_file": "local_run/swde_job_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9173684210526318,
+                "precision": 0.9200000000000002,
+                "recall": 0.9150000000000003,
+                "website_aggregated_results": {
+                    "nettemps": {
+                        "f1": 0.9236842105263159,
+                        "precision": 0.95,
+                        "recall": 0.9
+                    },
+                    "job": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "monster": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "rightitjobs": {
+                        "f1": 0.875,
+                        "precision": 0.875,
+                        "recall": 0.875
+                    },
+                    "dice": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "careerbuilder": {
+                        "f1": 0.7,
+                        "precision": 0.7,
+                        "recall": 0.7
+                    },
+                    "jobtarget": {
+                        "f1": 0.925,
+                        "precision": 0.925,
+                        "recall": 0.925
+                    },
+                    "hotjobs": {
+                        "f1": 0.95,
+                        "precision": 0.95,
+                        "recall": 0.95
+                    },
+                    "techcentric": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "jobcircle": {
+                        "f1": 0.8,
+                        "precision": 0.8,
+                        "recall": 0.8
+                    }
+                },
+                "field_aggregated_results": {
+                    "date_posted": {
+                        "f1": 0.8099999999999999,
+                        "precision": 0.8099999999999999,
+                        "recall": 0.8099999999999999
+                    },
+                    "location": {
+                        "f1": 0.9400000000000001,
+                        "precision": 0.9399999999999998,
+                        "recall": 0.9399999999999998
+                    },
+                    "title": {
+                        "f1": 0.9747368421052632,
+                        "precision": 0.9800000000000001,
+                        "recall": 0.9700000000000001
+                    },
+                    "company": {
+                        "f1": 0.9447368421052632,
+                        "precision": 0.95,
+                        "recall": 0.9400000000000001
+                    }
+                },
+                "results": {
+                    "nettemps": {
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "job": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "monster": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 0,
+                            "extracted_pages": 0,
+                            "ground_truth_pages": 0
+                        }
+                    },
+                    "rightitjobs": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 6,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "dice": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "careerbuilder": {
+                        "location": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 0,
+                            "extracted_pages": 1,
+                            "ground_truth_pages": 0
+                        }
+                    },
+                    "jobtarget": {
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "hotjobs": {
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "techcentric": {
+                        "date_posted": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "jobcircle": {
+                        "company": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "location": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "date_posted": {
+                            "page_hits": 2,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_nbaplayer_case_study": {
+        "predictions_file": "local_run/swde_nbaplayer_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9069281045751634,
+                "precision": 0.9159821428571429,
+                "recall": 0.9004166666666666,
+                "website_aggregated_results": {
+                    "usatoday": {
+                        "f1": 0.7220588235294119,
+                        "precision": 0.7535714285714286,
+                        "recall": 0.7
+                    },
+                    "si": {
+                        "f1": 0.875,
+                        "precision": 0.90625,
+                        "recall": 0.8541666666666667
+                    },
+                    "espn": {
+                        "f1": 0.75,
+                        "precision": 0.75,
+                        "recall": 0.75
+                    },
+                    "fanhouse": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "slam": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "nba": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "yahoo": {
+                        "f1": 0.9722222222222222,
+                        "precision": 1.0,
+                        "recall": 0.95
+                    },
+                    "foxsports": {
+                        "f1": 0.75,
+                        "precision": 0.75,
+                        "recall": 0.75
+                    },
+                    "msnca": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "wiki": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    }
+                },
+                "field_aggregated_results": {
+                    "team": {
+                        "f1": 0.7977124183006536,
+                        "precision": 0.8339285714285716,
+                        "recall": 0.7716666666666667
+                    },
+                    "weight": {
+                        "f1": 0.95,
+                        "precision": 0.95,
+                        "recall": 0.95
+                    },
+                    "name": {
+                        "f1": 0.9,
+                        "precision": 0.9,
+                        "recall": 0.9
+                    },
+                    "height": {
+                        "f1": 0.9800000000000001,
+                        "precision": 0.9800000000000001,
+                        "recall": 0.9800000000000001
+                    }
+                },
+                "results": {
+                    "usatoday": {
+                        "height": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "weight": {
+                            "page_hits": 5,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 5,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "si": {
+                        "team": {
+                            "page_hits": 5,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 12
+                        },
+                        "height": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "name": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        },
+                        "weight": {
+                            "page_hits": 12,
+                            "extracted_pages": 12,
+                            "ground_truth_pages": 12
+                        }
+                    },
+                    "espn": {
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 0,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "fanhouse": {
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "slam": {
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "nba": {
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 0,
+                            "extracted_pages": 0,
+                            "ground_truth_pages": 0
+                        },
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "yahoo": {
+                        "team": {
+                            "page_hits": 8,
+                            "extracted_pages": 8,
+                            "ground_truth_pages": 10
+                        },
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "foxsports": {
+                        "team": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "weight": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "name": {
+                            "page_hits": 0,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "height": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        }
+                    },
+                    "msnca": {
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "wiki": {
+                        "height": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "weight": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "team": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_movie_case_study": {
+        "predictions_file": "local_run/swde_movie_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9006346961861667,
+                "precision": 0.9222619047619048,
+                "recall": 0.8889285714285714,
+                "website_aggregated_results": {
+                    "boxofficemojo": {
+                        "f1": 0.975,
+                        "precision": 0.975,
+                        "recall": 0.975
+                    },
+                    "imdb": {
+                        "f1": 0.6514705882352941,
+                        "precision": 0.6892857142857143,
+                        "recall": 0.625
+                    },
+                    "iheartmovies": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "rottentomatoes": {
+                        "f1": 0.8928571428571429,
+                        "precision": 1.0,
+                        "recall": 0.85
+                    },
+                    "amctv": {
+                        "f1": 0.75,
+                        "precision": 0.75,
+                        "recall": 0.75
+                    },
+                    "metacritic": {
+                        "f1": 0.90625,
+                        "precision": 0.9583333333333334,
+                        "recall": 0.875
+                    },
+                    "yahoo": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "hollywood": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "allmovie": {
+                        "f1": 0.8500000000000001,
+                        "precision": 0.8500000000000001,
+                        "recall": 0.8500000000000001
+                    },
+                    "msn": {
+                        "f1": 0.9807692307692307,
+                        "precision": 1.0,
+                        "recall": 0.9642857142857143
+                    }
+                },
+                "field_aggregated_results": {
+                    "director": {
+                        "f1": 0.9,
+                        "precision": 0.9,
+                        "recall": 0.9
+                    },
+                    "genre": {
+                        "f1": 0.9400000000000001,
+                        "precision": 0.9400000000000001,
+                        "recall": 0.9400000000000001
+                    },
+                    "mpaa_rating": {
+                        "f1": 0.8800387847446671,
+                        "precision": 0.9457142857142857,
+                        "recall": 0.8457142857142858
+                    },
+                    "title": {
+                        "f1": 0.8825,
+                        "precision": 0.9033333333333333,
+                        "recall": 0.8699999999999999
+                    }
+                },
+                "results": {
+                    "boxofficemojo": {
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "imdb": {
+                        "genre": {
+                            "page_hits": 4,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 6,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 5,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "iheartmovies": {
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "rottentomatoes": {
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 4,
+                            "extracted_pages": 4,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "amctv": {
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 0,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "metacritic": {
+                        "mpaa_rating": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "title": {
+                            "page_hits": 5,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "yahoo": {
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "hollywood": {
+                        "mpaa_rating": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "allmovie": {
+                        "mpaa_rating": {
+                            "page_hits": 6,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "genre": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "title": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "msn": {
+                        "genre": {
+                            "page_hits": 7,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        },
+                        "director": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "mpaa_rating": {
+                            "page_hits": 6,
+                            "extracted_pages": 6,
+                            "ground_truth_pages": 7
+                        },
+                        "title": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/swde_restaurant_case_study": {
+        "predictions_file": "local_run/swde_restaurant_case_study/predictions.ndjson",
+        "results": {
+            "page_level_f1": {
+                "f1": 0.9116917293233083,
+                "precision": 0.9122619047619048,
+                "recall": 0.9114285714285716,
+                "website_aggregated_results": {
+                    "opentable": {
+                        "f1": 0.925,
+                        "precision": 0.925,
+                        "recall": 0.925
+                    },
+                    "zagat": {
+                        "f1": 0.975,
+                        "precision": 0.975,
+                        "recall": 0.975
+                    },
+                    "pickarestaurant": {
+                        "f1": 0.975,
+                        "precision": 0.975,
+                        "recall": 0.975
+                    },
+                    "gayot": {
+                        "f1": 0.575,
+                        "precision": 0.575,
+                        "recall": 0.575
+                    },
+                    "restaurantica": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "usdiners": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    },
+                    "fodors": {
+                        "f1": 0.9500000000000001,
+                        "precision": 0.95,
+                        "recall": 0.95
+                    },
+                    "urbanspoon": {
+                        "f1": 0.8157894736842106,
+                        "precision": 0.8083333333333333,
+                        "recall": 0.825
+                    },
+                    "tripadvisor": {
+                        "f1": 0.9011278195488722,
+                        "precision": 0.9142857142857143,
+                        "recall": 0.8892857142857143
+                    },
+                    "frommers": {
+                        "f1": 1.0,
+                        "precision": 1.0,
+                        "recall": 1.0
+                    }
+                },
+                "field_aggregated_results": {
+                    "address": {
+                        "f1": 0.96,
+                        "precision": 0.96,
+                        "recall": 0.96
+                    },
+                    "cuisine": {
+                        "f1": 0.8572932330827069,
+                        "precision": 0.8590476190476191,
+                        "recall": 0.8557142857142856
+                    },
+                    "name": {
+                        "f1": 0.8399999999999999,
+                        "precision": 0.8399999999999999,
+                        "recall": 0.8399999999999999
+                    },
+                    "phone": {
+                        "f1": 0.9894736842105264,
+                        "precision": 0.99,
+                        "recall": 0.99
+                    }
+                },
+                "results": {
+                    "opentable": {
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 7,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "zagat": {
+                        "name": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "pickarestaurant": {
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "gayot": {
+                        "address": {
+                            "page_hits": 6,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 7,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 0,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "restaurantica": {
+                        "phone": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 9
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "usdiners": {
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "fodors": {
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    },
+                    "urbanspoon": {
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 3,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 9,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 9
+                        }
+                    },
+                    "tripadvisor": {
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 8,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "phone": {
+                            "page_hits": 9,
+                            "extracted_pages": 9,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 6,
+                            "extracted_pages": 7,
+                            "ground_truth_pages": 7
+                        }
+                    },
+                    "frommers": {
+                        "phone": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "name": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "cuisine": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        },
+                        "address": {
+                            "page_hits": 10,
+                            "extracted_pages": 10,
+                            "ground_truth_pages": 10
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "local_run/websrc_dev_case_study": {
+        "predictions_file": "local_run/websrc_dev_case_study/predictions.ndjson",
+        "results": {
+            "token_f1": {
+                "f1": 0.8445386213786212,
+                "precision": 0.8488119047619048,
+                "recall": 0.86161888053467
+            }
+        }
+    },
+    "local_run/websrc_test_case_study": {
+        "predictions_file": "local_run/websrc_test_case_study/predictions.ndjson",
+        "results": {
+            "token_f1": {
+                "f1": 0.006,
+                "precision": 0.006,
+                "recall": 0.006
+            }
+        }
+    },
+    "average_page_level_f1": 0.89436259164348,
+    "average_token_level_f1": 0.8505386213786212
+}

@@ -52,13 +52,12 @@ from web_analysis import process_log_records, DOMAIN_MAP  # noqa: E402
 # ---------------------------------------------------------------------------
 # Default paths
 # ---------------------------------------------------------------------------
-BASE = Path("/home/abdo/PAPER/Eval")
-
+BASE = Path("/home/abdo/PAPER/Eval/axe_final_output")
 DEFAULT_TEST_PATH = str(
-    BASE / "websrc_test_error_analysis_final/metric/token_f1_sample_eval.ndjson"
+    BASE / "websrc_test/metric/token_f1_sample_eval.ndjson"
 )
 DEFAULT_DEV_PATH = str(
-    BASE / "websrc_dev_error_analysis_final/metric/token_f1_sample_eval.ndjson"
+    BASE / "websrc_dev/metric/token_f1_sample_eval.ndjson"
 )
 
 # Canonical taxonomy order

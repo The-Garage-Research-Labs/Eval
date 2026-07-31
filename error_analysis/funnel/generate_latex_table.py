@@ -55,17 +55,17 @@ from run_funnel_analysis import run_funnel_analysis, MatchingConfig  # noqa: E40
 # Re-edit this dict to point at your ndjson files.
 # Keys = display name for the row; values = path to the metric ndjson.
 # ---------------------------------------------------------------------------
-BASE = Path("/home/abdo/PAPER/Eval")
+BASE = Path("/home/abdo/PAPER/Eval/axe_final_output")
 
 DEFAULT_FILES: Dict[str, str] = {
-    "Auto":       str(BASE / "swde_auto_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "Book":       str(BASE / "swde_book_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "Camera":     str(BASE / "swde_camera_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "Job":        str(BASE / "swde_job_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "Movie":      str(BASE / "swde_movie_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "NBA Player": str(BASE / "swde_nbaplayer_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "Restaurant": str(BASE / "swde_restaurant_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
-    "University": str(BASE / "swde_university_error_analysis_final/metric/page_level_f1_sample_eval.ndjson"),
+    "Auto":         str(BASE / "swde_auto/metric/page_level_f1_sample_eval.ndjson"),
+    "Book":         str(BASE / "swde_book/metric/page_level_f1_sample_eval.ndjson"),
+    "Camera":       str(BASE / "swde_camera/metric/page_level_f1_sample_eval.ndjson"),
+    "Job":          str(BASE / "swde_job/metric/page_level_f1_sample_eval.ndjson"),
+    "Movie":        str(BASE / "swde_movie/metric/page_level_f1_sample_eval.ndjson"),
+    "NBA Player":   str(BASE / "swde_nbaplayer/metric/page_level_f1_sample_eval.ndjson"),
+    "Restaurant":   str(BASE / "swde_restaurant/metric/page_level_f1_sample_eval.ndjson"),
+    "University":   str(BASE / "swde_university/metric/page_level_f1_sample_eval.ndjson"),
 }
 
 # Canonical column order and display names
@@ -119,11 +119,6 @@ def build_table_data(
     cfg: Optional[MatchingConfig] = None,
     verbose: bool = False,
 ) -> Tuple[List[dict], dict]:
-    """
-    Returns:
-        rows  - list of dicts with keys: domain, total_errors, <error_type>_count, <error_type>_pct
-        agg   - aggregate dict with same structure
-    """
     rows = []
     agg_counts: Dict[str, int] = defaultdict(int)
     agg_total = 0
@@ -136,7 +131,10 @@ def build_table_data(
         print(f"Processing {domain_name} ...", file=sys.stderr)
         counts = analyze_domain(path, cfg=cfg, verbose=verbose)
 
-        total_errors = sum(counts.values())
+        # ✅ FIX: Only count the 4 displayed error types toward the total
+        #          (ignores any "Match"/"Correct"/"None" classifications)
+        total_errors = sum(counts.get(etype, 0) for etype, _ in ERROR_TYPES)
+
         row = {"domain": domain_name, "total_errors": total_errors}
         for etype, _ in ERROR_TYPES:
             n = counts.get(etype, 0)
@@ -146,7 +144,10 @@ def build_table_data(
         agg_total += total_errors
         rows.append(row)
 
-    agg: dict = {"domain": r"\textbf{All}", "total_errors": agg_total}
+    for row in rows:
+        row["domain_share_pct"] = (row["total_errors"] / agg_total * 100) if agg_total > 0 else 0.0
+
+    agg: dict = {"domain": r"\textbf{All}", "total_errors": agg_total, "domain_share_pct": 100.0}
     for etype, _ in ERROR_TYPES:
         n = agg_counts[etype]
         agg[f"{etype}_count"] = n
@@ -164,10 +165,9 @@ def generate_latex(
     agg: dict,
     caption: str = (
         "Funnel error analysis on SWDE across domains. "
-        "Each error-type column shows the percentage of that domain's "
-        "errors attributable to the corresponding pipeline stage. "
-        r"\textbf{Bold} marks the dominant error type per domain. "
-        r"\#Err is the total number of failed field-level extractions."
+        "Values for error pipeline stages are reported as percentages of each domain's errors. "
+        "The Total column reports each domain's percentage share of all dataset errors. "
+        r"\textbf{Bold} marks the dominant error type per domain."
     ),
     label: str = "tab:swde_funnel",
 ) -> str:
@@ -182,16 +182,16 @@ def generate_latex(
     label       : LaTeX \\label{} value
     """
     n_ecols = len(ERROR_TYPES)
-    # Column spec: Domain | N error cols | Total errors
+    # Column spec: Domain | N error cols | Total errors %
     col_spec = "l" + "r" * n_ecols + "r"
 
-    # Put (%) in each error-type header so cells stay clean
+    # Column headers for error types (percentages mentioned in caption)
     header_parts = [
         r"\textbf{Domain}",
     ] + [
-        r"\textbf{" + _tex_escape(label_short) + r" (\%)}"
+        r"\textbf{" + _tex_escape(label_short) + r"}"
         for _, label_short in ERROR_TYPES
-    ] + [r"\textbf{\#Err}"]
+    ] + [r"\textbf{Total}"]
     header_line = " & ".join(header_parts) + r" \\"
 
     def fmt_cell(row: dict, etype: str, is_max: bool) -> str:
@@ -213,7 +213,7 @@ def generate_latex(
         for etype, _ in ERROR_TYPES:
             is_max = (not bold_domain) and (row[f"{etype}_pct"] == max_pct)
             cells.append(fmt_cell(row, etype, is_max))
-        cells.append(str(row["total_errors"]))
+        cells.append(f"{row['domain_share_pct']:.1f}")
         return " & ".join(cells) + r" \\"
 
     # Build the table body
@@ -252,20 +252,22 @@ def print_summary(rows: List[dict], agg: dict) -> None:
     print("\n" + "=" * len(sep))
     print("SWDE Funnel Error Analysis Summary (%)")
     print("=" * len(sep))
-    header = f"{'Domain':<20}" + "".join(f"{s + ' (%)':>{col_w}}" for _, s in ERROR_TYPES) + f"{'#Errors':>{col_w}}"
+    header = f"{'Domain':<20}" + "".join(f"{s:>{col_w}}" for _, s in ERROR_TYPES) + f"{'Total':>{col_w}}"
     print(header)
     print(sep)
     for row in rows:
         cols = [f"{row[f'{e}_pct']:.1f}" for e, _ in ERROR_TYPES]
+        val_str = f"{row['domain_share_pct']:.1f}"
         line = (f"{row['domain']:<20}"
                 + "".join(f"{c:>{col_w}}" for c in cols)
-                + f"{row['total_errors']:>{col_w}}")
+                + f"{val_str:>{col_w}}")
         print(line)
     print(sep)
     agg_cols = [f"{agg[f'{e}_pct']:.1f}" for e, _ in ERROR_TYPES]
+    agg_val_str = f"{agg['domain_share_pct']:.1f}"
     agg_line = (f"{'ALL':<20}"
                 + "".join(f"{c:>{col_w}}" for c in agg_cols)
-                + f"{agg['total_errors']:>{col_w}}")
+                + f"{agg_val_str:>{col_w}}")
     print(agg_line)
     print("=" * len(sep) + "\n")
 
@@ -295,11 +297,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--caption",
         default=(
-            r"Funnel error analysis on SWDE. "
-            r"Each error-type column shows the percentage of that domain's "
-            r"errors attributable to the corresponding pipeline stage. "
-            r"\textbf{Bold} marks the dominant error type per domain; "
-            r"\#Err is the total number of failed field-level extractions."
+            r"Funnel error analysis on SWDE across domains. "
+            r"Values for error pipeline stages are reported as percentages of each domain's errors. "
+            r"The Total column reports each domain's percentage share of all dataset errors. "
+            r"\textbf{Bold} marks the dominant error type per domain."
         ),
         help="LaTeX caption for the table.",
     )

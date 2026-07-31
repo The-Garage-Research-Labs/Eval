@@ -29,34 +29,34 @@ import multiprocessing as mp
 # EXPERIMENT_NAME = "error_analysis_websrc_test_json_threshold"
 # EXPERIMENT_NAME = "error_analysis_websrc_dev"
 # EXPERIMENT_NAME = "error_analysis_websrc_test"
-EXPERIMENT_NAME = "error_analysis_final"
+EXPERIMENT_NAME = "case_study"
 
 SWDE_DOMAINS = {
     "auto": 17923,
-    # "university": 16705,
-    # "camera": 5258,
-    # "book": 20000,
-    # "job": 20000,
-    # "nbaplayer": 4405,
-    # "movie": 20000,
-    # "restaurant": 20000
+    "university": 16705,
+    "camera": 5258,
+    "book": 20000,
+    "job": 20000,
+    "nbaplayer": 4405,
+    "movie": 20000,
+    "restaurant": 20000
 }
-SWDE_SAMPLES = 200
+SWDE_SAMPLES = 100
 WEBSRC_TOTAL_TEST = 40000
 WEBSRC_TOTAL_DEV = 50000
-WEBSRC_SAMPLES = 1000
+WEBSRC_SAMPLES = 500
 BATCH_SIZE = 200
 SEED = 42
 USE_PRUNER = True 
-THRESHOLD_TOKENS = 2048 
-OUTPUT_DIR = "/workspace/output"
+THRESHOLD_TOKENS = 128 
+OUTPUT_DIR = "local_run"
 ########################################## CONFIG
 
 dataset_configs = []
 
 for dom , val in SWDE_DOMAINS.items():
     dataset_configs.append(SWDEConfig(
-        local_dir="/workspace/SWDE",
+        local_dir="/home/abdo/PAPER/Eval/data/swde/hf_SWDE",
         indices=list(range(0,val,int(val/SWDE_SAMPLES))),  # Use a subset of the dataset for
         # indices=list(range(0,1000,25)), # Single sample for rapid verification
         domain=dom,
@@ -65,15 +65,15 @@ for dom , val in SWDE_DOMAINS.items():
 
 
 dataset_configs.append(WebSrcConfig(
-    html_source_path='/workspace/websrc/dev/dev_html_content.jsonl',
-    data_source_path='/workspace/websrc/dev/dev_dataset.jsonl',
+    html_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_html_content.jsonl',
+    data_source_path='/home/abdo/PAPER/Eval/data/websrc/dev/dev_dataset.jsonl',
     indices= list(range(0,WEBSRC_TOTAL_DEV,int(WEBSRC_TOTAL_DEV/WEBSRC_SAMPLES))),
     batch_size=BATCH_SIZE
 ))
 
 dataset_configs.append(WebSrcConfig(
-    html_source_path='/workspace/websrc/test/html_content.jsonl',
-    data_source_path='/workspace/websrc/test/dataset.jsonl',
+    html_source_path='/home/abdo/PAPER/Eval/data/websrc/test/html_content.jsonl',
+    data_source_path='/home/abdo/PAPER/Eval/data/websrc/test/dataset.jsonl',
     indices= list(range(0,WEBSRC_TOTAL_TEST,int(WEBSRC_TOTAL_TEST/WEBSRC_SAMPLES))),
     batch_size=BATCH_SIZE
 ))
@@ -108,7 +108,7 @@ llm_client_config = LLMClientConfig(
         # api_key="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",
         max_tokens= 1024, # max new tokens
         engine_args={
-            "gpu_memory_utilization": 0.9, 
+            "gpu_memory_utilization": 0.8, 
             "max_model_len": 8192, # max total tokens
             # "enforce_eager": True,
         },
